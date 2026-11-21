@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="قائمة الجمعية">
-<link rel="stylesheet" href="app.css?v=90471ee085">
+<link rel="stylesheet" href="app.css?v=ebc85b1658">
 </head>
 <body>
 <!-- Top: search + sections (stay on screen while scrolling) -->
@@ -123,6 +123,32 @@
   </div>
 </section>
 
+<!-- Shopping checklist: opened from the link in the shared list; tick each item once it is bought -->
+<section id="shop" class="sheet shop" role="dialog" aria-modal="true" aria-labelledby="shopTitle" hidden>
+  <div class="sheet-head">
+    <button class="icon-btn" type="button" data-close aria-label="إغلاق">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
+    </button>
+    <div class="sheet-title"><h2 id="shopTitle">قائمة التسوق</h2><p id="shopSub" class="sub"></p></div>
+    <button id="shopHide" class="text-btn" type="button">إخفاء ما تم</button>
+  </div>
+  <div class="shop-progress"><div class="pbar"><span id="shopBar"></span></div><b id="shopCount"></b></div>
+  <div id="shopBody" class="sheet-body"></div>
+</section>
+
+<!-- Earlier lists (kept on this phone when a list is shared) -->
+<section id="hpanel" class="panel" role="dialog" aria-modal="true" aria-labelledby="hTitle" hidden>
+  <div class="panel-card">
+    <div class="sheet-head">
+      <button class="icon-btn" type="button" data-close aria-label="إغلاق">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
+      </button>
+      <div class="sheet-title"><h2 id="hTitle">القوائم السابقة</h2><p class="sub">أضيفي قائمة سابقة إلى السلة ثم عدّليها</p></div>
+    </div>
+    <div id="hBody" class="panel-body"></div>
+  </div>
+</section>
+
 <!-- File preview -->
 <section id="preview" class="sheet preview" role="dialog" aria-modal="true" aria-labelledby="pvTitle" hidden>
   <div class="sheet-head">
@@ -136,8 +162,8 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="catalog.js?v=a2c9e82550"></script>
-<script src="pdf.js?v=c9128276b7"></script>
-<script src="app.js?v=d5f1f04796"></script>
+<script src="catalog.js?v=faf2723272"></script>
+<script src="pdf.js?v=4867c9d2a7"></script>
+<script src="app.js?v=205ff06784"></script>
 </body>
 </html>

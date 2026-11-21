@@ -334,3 +334,40 @@ main { padding: 6px 0 0; }
 .toast button { border: 0; background: transparent; color: #6EE7B7; font-weight: 800; min-height: 36px; padding: 0 8px; }
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 70%, transparent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- shopping checklist (opened from the shared link) */
+.shop-progress { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--card); border-bottom: 1px solid var(--line); }
+.pbar { flex: 1; height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.pbar span { display: block; width: 0; height: 100%; background: var(--primary); transition: width .2s; }
+.shop-progress b { font-size: 15px; white-space: nowrap; }
+.srow {
+  display: grid; grid-template-columns: 40px 60px minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  padding: 10px 14px; border-top: 1px solid var(--line); cursor: pointer; -webkit-user-select: none; user-select: none;
+}
+.srow .tick { width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid #9AA8A1; display: flex; align-items: center; justify-content: center; background: var(--card); color: transparent; }
+.srow .tick svg { width: 22px; height: 22px; }
+.srow .pic { width: 60px; height: 60px; padding: 0; border: 0; border-radius: 10px; background: var(--photo-bg); overflow: hidden; }
+.srow .pic img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.s-name { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.s-size { margin: 2px 0 0; font-size: 14.5px; font-weight: 800; color: var(--ink-2); }
+.s-qty { font-size: 22px; font-weight: 800; min-width: 48px; text-align: center; }
+.srow.done { background: color-mix(in srgb, var(--primary-soft) 55%, var(--card)); }
+.srow.done .tick { background: var(--primary); border-color: var(--primary); color: #fff; }
+.srow.done .s-name, .srow.done .s-size, .srow.done .s-qty { text-decoration: line-through; color: var(--muted); }
+.srow.done .pic { opacity: .5; }
+.shop.hide-done .srow.done { display: none; }
+
+/* ---------- basket extras: one choice for all undecided lines, earlier lists */
+.bulk { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--bg); border-top: 1px solid var(--line); font-size: 14px; font-weight: 700; color: var(--ink-2); }
+.bulk button { flex: 1; min-height: 40px; border-radius: 10px; border: 1.5px solid; background: var(--card); font-weight: 800; }
+.bulk .L { border-color: var(--lu); color: var(--lu); }
+.bulk .T { border-color: var(--tm); color: var(--tm); }
+.hist-inline { margin: 0 12px 16px; }
+.hist-inline h3 { margin: 0 4px 8px; font-size: 16px; font-weight: 800; }
+.hrow { display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 8px; background: var(--card); border-radius: 14px; box-shadow: var(--shadow); }
+.h-thumbs { display: grid; grid-template-columns: repeat(2, 26px); gap: 3px; flex: none; }
+.h-thumbs img { width: 26px; height: 26px; object-fit: contain; background: var(--photo-bg); border-radius: 5px; }
+.h-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.h-info b { font-size: 15px; }
+.h-info small { color: var(--muted); font-size: 13px; }
+.hrow .secondary { min-height: 42px; font-size: 15px; padding: 0 14px; }

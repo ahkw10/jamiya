@@ -16,7 +16,7 @@
   var SOFT = { L: '#E2EDFA', T: '#FDEBDD', U: '#ECEFF1', R: '#FBE7DC' };
   var AR = '٠١٢٣٤٥٦٧٨٩';
   // sizes of the pieces (px)
-  var H_FIRST = 176, H_NEXT = 78, H_STORE = 92, H_CONT = 64, H_SEC = 58, H_ROW = 128, H_NOTE = 46, GAP_STORE = 22, FOOT = 54;
+  var H_LINK = 70, H_FIRST = 176, H_NEXT = 78, H_STORE = 92, H_CONT = 64, H_SEC = 58, H_ROW = 128, H_NOTE = 46, GAP_STORE = 22, FOOT = 54;
 
   function ar(n) { return String(n).replace(/[0-9]/g, function (d) { return AR[+d]; }); }
   function arText(s) {
@@ -83,8 +83,18 @@
     ctx.textAlign = 'left'; ctx.fillStyle = INK2; ctx.font = font(700, 30);
     ctx.fillText(meta.summary, M, 70);
     if (meta.priceNote) { ctx.textAlign = 'right'; ctx.fillStyle = MUTED; ctx.font = font(500, 25); ctx.fillText(meta.priceNote, PAGE_W - M, 152); }
-    ctx.fillStyle = LINE; ctx.fillRect(M, H_FIRST - 6, PAGE_W - 2 * M, 3);
-    return H_FIRST + 10;
+    var bottom = H_FIRST;
+    if (meta.link) {             // a full-width tappable bar: the PDF carries a link that opens the list as a checklist
+      var lx = M, ly = H_FIRST - 4, lw = PAGE_W - 2 * M, lh = H_LINK - 14;
+      ctx.fillStyle = '#E4F3EA'; rr(ctx, lx, ly, lw, lh, lh / 2); ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = '#0E7C4A'; ctx.stroke();
+      ctx.direction = 'rtl'; ctx.textAlign = 'center'; ctx.fillStyle = '#0E7C4A'; ctx.font = font(800, 28);
+      ctx.fillText('✓ اضغط هنا لفتح القائمة والتأشير على المشتريات أثناء التسوق', lx + lw / 2, ly + lh / 2 + 10);
+      meta.linkRect = [lx, ly, lw, lh];
+      bottom = H_FIRST + H_LINK;
+    }
+    ctx.fillStyle = LINE; ctx.fillRect(M, bottom - 6, PAGE_W - 2 * M, 3);
+    return bottom + 10;
   }
   function drawNextHeader(ctx, pageIndex, pageCount) {
     ctx.direction = 'rtl'; ctx.textAlign = 'right'; ctx.fillStyle = INK2; ctx.font = font(800, 32);
@@ -172,7 +182,7 @@
       });
     });
     var pages = [], cur = null, y = 0;
-    function newPage(first) { cur = { first: first, items: [], h: 0 }; pages.push(cur); y = first ? H_FIRST + 10 : H_NEXT + 6; }
+    function newPage(first) { cur = { first: first, items: [], h: 0 }; pages.push(cur); y = first ? H_FIRST + (doc.link ? H_LINK : 0) + 10 : H_NEXT + 6; }
     newPage(true);
     for (var i = 0; i < blocks.length; i++) {
       var b = blocks[i];
@@ -211,8 +221,8 @@
     var tz = -d.getTimezoneOffset(), a = Math.abs(tz);
     return 'D:' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + (tz >= 0 ? '+' : '-') + p(Math.floor(a / 60)) + "'" + p(a % 60) + "'";
   }
-  function assemblePdf(pages, title, when) {
-    var chunks = [], pos = 0, offs = [];
+  function assemblePdf(pages, title, when, link) {
+    var chunks = [], pos = 0, offs = [], annot = '';
     function put(x) { var b = typeof x === 'string' ? latin1(x) : x; chunks.push(b); pos += b.length; }
     function obj(n, body) { offs[n] = pos; put(n + ' 0 obj\n'); body(); put('\nendobj\n'); }
     var n = pages.length;
@@ -224,12 +234,20 @@
     pages.forEach(function (pg, i) {
       var p = pageNo(i), im = p + 1, ct = p + 2;
       var pw = +(pg.w * PT_W / PAGE_W).toFixed(2), ph = +(pg.h * PT_W / PAGE_W).toFixed(2);
-      obj(p, function () { put('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pw + ' ' + ph + '] /Resources << /XObject << /P' + i + ' ' + im + ' 0 R >> /ProcSet [/PDF /ImageC] >> /Contents ' + ct + ' 0 R >>'); });
+      var withLink = link && i === 0;
+      if (withLink) {             // link annotation over the «open as checklist» box (PDF units, origin at the bottom)
+        var sc = PT_W / PAGE_W, r = link.rect;
+        var box = [r[0] * sc, ph - (r[1] + r[3]) * sc, (r[0] + r[2]) * sc, ph - r[1] * sc].map(function (v) { return v.toFixed(2); });
+        annot = '<< /Type /Annot /Subtype /Link /Rect [' + box.join(' ') + '] /Border [0 0 0] /A << /S /URI /URI (' + link.url.replace(/[()\\]/g, '') + ') >> >>';
+      }
+      obj(p, function () { put('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pw + ' ' + ph + '] /Resources << /XObject << /P' + i + ' ' + im + ' 0 R >> /ProcSet [/PDF /ImageC] >> /Contents ' + ct + ' 0 R' + (withLink ? ' /Annots [' + (4 + n * 3) + ' 0 R]' : '') + ' >>'); });
       obj(im, function () { put('<< /Type /XObject /Subtype /Image /Width ' + pg.w + ' /Height ' + pg.h + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + pg.bytes.length + ' >>\nstream\n'); put(pg.bytes); put('\nendstream'); });
       var content = 'q ' + pw + ' 0 0 ' + ph + ' 0 0 cm /P' + i + ' Do Q';
       obj(ct, function () { put('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream'); });
     });
-    var total = 3 + n * 3, xref = pos, x = 'xref\n0 ' + (total + 1) + '\n0000000000 65535 f \n';
+    var total = 3 + n * 3;
+    if (annot) { total++; obj(total, function () { put(annot); }); }
+    var xref = pos, x = 'xref\n0 ' + (total + 1) + '\n0000000000 65535 f \n';
     for (var k = 1; k <= total; k++) x += ('000000000' + offs[k]).slice(-10) + ' 00000 n \n';
     put(x); put('trailer\n<< /Size ' + (total + 1) + ' /Root 1 0 R /Info 3 0 R >>\nstartxref\n' + xref + '\n%%EOF\n');
     return new Blob(chunks, { type: 'application/pdf' });
@@ -261,9 +279,9 @@
     });
     var all = []; blocks.forEach(function (s) { s.sections.forEach(function (sec) { sec.items.forEach(function (e) { all.push(e); }); }); });
     var stores = (doc.stores || []).length;
-    var meta = { dateText: dateText(when), priceNote: doc.priceNote || '',
+    var meta = { dateText: dateText(when), priceNote: doc.priceNote || '', link: doc.link || '',
       summary: countItems(all.length) + (stores === 2 ? ' · متجران' : stores === 1 ? ' · ' + doc.stores[0].name : '') };
-    var plan = layout({ blocks: blocks });
+    var plan = layout({ blocks: blocks, link: meta.link });
     var pageCount = plan.length;
     var canvas = document.createElement('canvas'); canvas.width = PAGE_W; canvas.height = PAGE_MAX_H;
     var ctx = canvas.getContext('2d', { willReadFrequently: true }) || canvas.getContext('2d');
@@ -292,7 +310,7 @@
         return chain;
       })
       .then(function () {
-        var blob = assemblePdf(pages, 'قائمة المشتريات', when), name = fileName(when), file;
+        var blob = assemblePdf(pages, 'قائمة المشتريات', when, meta.link && meta.linkRect ? { url: meta.link, rect: meta.linkRect } : null), name = fileName(when), file;
         try { file = new File([blob], name, { type: 'application/pdf', lastModified: when.getTime() }); } catch (e) { file = blob; file.name = name; }
         return { file: file, blob: blob, pages: previews, pageCount: pageCount, name: name };
       });
