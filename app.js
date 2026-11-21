@@ -112,14 +112,91 @@
     return String(s || '').toLowerCase()
       .replace(/[ً-ْٰـ]/g, '')
       .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
+      .replace(/ظ/g, 'ض')                       // «حفاظات» finds «حفاضات»
       .replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); })
       .replace(/[۰-۹]/g, function (d) { return String(d.charCodeAt(0) - 0x06F0); })
       .replace(/[×*]/g, 'x')
       .replace(/\s+/g, ' ').trim();
   }
 
+  // ------------------------------------------------------------ search (ranked: whole words first)
+  // words people type for the same thing (Kuwaiti/Gulf usage → the word used in the names)
+  var SYN = {
+    'حفايض': ['حفاض'], 'عيش': ['ارز'], 'رز': ['ارز'], 'روب': ['زبادي'], 'ماي': ['مياه'], 'ماء': ['مياه'],
+    'محارم': ['مناديل'], 'طماطه': ['طماطم'], 'بندوره': ['طماطم'], 'كلينيكس': ['كلينكس'], 'كلوركس': ['مبيض'],
+    'معكرونه': ['مكرونه'], 'مكرونه': ['معكرونه'], 'كاتشاب': ['كاتشب'], 'مايونيز': ['مايونيز', 'مايونيس'], 'صابونه': ['صابون']
+  };
+  var PROCL = ['وبال', 'وال', 'بال', 'كال', 'فال', 'لل', 'ال', 'و', 'ب', 'ل', 'ف', 'ك'];
+  function toks(s) {
+    return norm(s).replace(/(\d)x(\d)/g, '$1 x $2').split(/[\s\-–—_()[\]{},،؛:+\/\\|"'«»!?؟]+/).filter(Boolean);
+  }
+  function stripP(t) {
+    for (var i = 0; i < PROCL.length; i++) {
+      var p = PROCL[i];
+      if (t.length - p.length >= 2 && t.lastIndexOf(p, 0) === 0) return t.slice(p.length);
+    }
+    return t;
+  }
+  function prep(it) {
+    if (it._tok) return;
+    it._tok = toks(label(it));
+    it._tokS = it._tok.map(stripP);
+    var ct = toks(it.cat);
+    it._cat0 = ct[0] || '';                       // main word of the section («ألبان», «منظفات»…)
+    it._catRest = ct.slice(1).map(stripP);
+  }
+  // 4 = the word itself; 3.5 = the word after «ال/بال/و…» («بالحليب»); 3…2.2 = start of a word, the
+  // shorter the rest the better («جبن» → «جبنة» before «لبن» → «لبناني»); 1 = inside another word
+  // («بيض» in «أبيض»). Numbers match whole numbers only («5» is not «50»). The main word of a
+  // section finds the whole section; its other words count less («بيض» finds eggs, not all dairy).
+  function termScore(it, alts) {
+    var best = 0;
+    for (var a = 0; a < alts.length; a++) {
+      var q = alts[a], num = /^[\d.]+$/.test(q);
+      for (var i = 0; i < it._tok.length; i++) {
+        var t = it._tok[i], st = it._tokS[i], s = 0, e;
+        if (t === q) return 4;
+        if (t.lastIndexOf(q, 0) === 0) { e = t.length - q.length; s = num ? 1 : e <= 1 ? 3 : e === 2 ? 2.6 : 2.2; }
+        else if (st !== t && st === q) s = 3.5;
+        else if (st !== t && !num && st.lastIndexOf(q, 0) === 0) { e = st.length - q.length; s = e <= 1 ? 2.7 : e === 2 ? 2.3 : 2; }
+        else if (t.indexOf(q) >= 0) s = 1;
+        if (s > best) best = s;
+      }
+      if (it._cat0 === q || stripP(it._cat0) === q) best = Math.max(best, 3.5);
+      else if (it._cat0.lastIndexOf(q, 0) === 0 || it._catRest.some(function (c) { return c === q || c.lastIndexOf(q, 0) === 0; })) best = Math.max(best, 2);
+    }
+    if (!best && String(it.no) === alts[0]) best = 2;
+    return best;
+  }
+  // id -> score of the items that match every word of the query (null when there is no query)
+  function searchScores(q) {
+    var terms = toks(q);
+    if (!terms.length) return null;
+    var alts = terms.map(function (t) { var s = SYN[t] || []; return [t].concat(s.filter(function (x) { return x !== t; })); });
+    var rows = [], maxPer = terms.map(function () { return 0; });
+    ITEMS.forEach(function (it) {
+      prep(it);
+      var ss = alts.map(function (al) { return termScore(it, al); });
+      for (var i = 0; i < ss.length; i++) { if (!ss[i]) return; if (ss[i] > maxPer[i]) maxPer[i] = ss[i]; }
+      rows.push([it.id, ss]);
+    });
+    var out = new Map();
+    rows.forEach(function (r) {
+      var sum = 0;
+      for (var i = 0; i < r[1].length; i++) {
+        // when the word itself was found, drop weak look-alikes («لبناني» for «لبن»); when only
+        // word starts were found, drop matches inside other words
+        var limit = maxPer[i] >= 3.5 ? 2.5 : maxPer[i] >= 2.5 ? 2 : 0;
+        if (r[1][i] < limit) return;
+        sum += r[1][i];
+      }
+      out.set(r[0], sum);
+    });
+    return out;
+  }
+
   // ------------------------------------------------------------ elements
-  var catalogEl = $('#catalog'), catSel = $('#cat'), qInput = $('#q'), emptyEl = $('#empty');
+  var catalogEl = $('#catalog'), chipsEl = $('#chips'), qInput = $('#q'), qClear = $('#qClear'), emptyEl = $('#empty');
   var toolsEl = $('#tools'), barEl = $('#bar'), barNote = $('#barNote');
   var shareBtn = $('#shareBtn'), shareLabel = $('#shareLabel'), downloadBtn = $('#downloadBtn');
   var reviewBtn = $('#reviewBtn'), rbCount = $('#rbCount');
@@ -133,6 +210,8 @@
   // ------------------------------------------------------------ catalog
   var cards = new Map();
   var sections = [];
+  var chips = [];
+  var curCat = '';               // '' = all sections
 
   function ctrlHTML(q) {
     if (!q) return '<button type="button" class="add" data-act="add">إضافة</button>';
@@ -188,10 +267,24 @@
     return updateStepper(el.querySelector('.ctrl'), q);
   }
 
+  function makeChip(cat, text) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.dataset.cat = cat;
+    b.setAttribute('aria-pressed', cat === curCat ? 'true' : 'false');
+    var t = document.createElement('span'); t.textContent = text;
+    var n = document.createElement('span'); n.className = 'chip-n'; n.hidden = true;
+    b.appendChild(t); b.appendChild(n);
+    chipsEl.appendChild(b);
+    chips.push({ cat: cat, el: b, countEl: n });
+  }
+
   function buildCatalog() {
     var frag = document.createDocumentFragment();
     var cats = (CAT.categories || []).slice();
     ITEMS.forEach(function (it) { if (cats.indexOf(it.cat) < 0) cats.push(it.cat); });
+    makeChip('', 'الكل');
     cats.forEach(function (c) {
       var its = ITEMS.filter(function (it) { return it.cat === c; });
       if (!its.length) return;
@@ -213,11 +306,9 @@
       sec.appendChild(h);
       sec.appendChild(grid);
       frag.appendChild(sec);
-      sections.push({ cat: c, el: sec, countEl: small, ids: its.map(function (i) { return i.id; }) });
-      var opt = document.createElement('option');
-      opt.value = c;
-      opt.textContent = c || 'أخرى';
-      catSel.appendChild(opt);
+      var ids = its.map(function (i) { return i.id; });
+      sections.push({ cat: c, el: sec, grid: grid, countEl: small, ids: ids, order: ids.slice(), best: 0 });
+      makeChip(c, c || 'أخرى');
     });
     catalogEl.appendChild(frag);
     $('#subtitle').textContent = countProducts(ITEMS.length) + ' — اختر ما تحتاجه وحدد الكمية ثم اضغط «مشاركة قائمة المشتريات».';
@@ -227,24 +318,84 @@
     }
   }
 
+  function sameOrder(a, b) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  // Shows the cards of the chosen section that match the search. While searching, the best
+  // matches come first (sections and cards); without a search the usual order is restored.
   function applyFilter() {
-    var terms = norm(qInput.value).split(' ').filter(Boolean);
-    var cat = catSel.value, total = 0;
-    sections.forEach(function (s) {
-      if (cat && s.cat !== cat) { s.el.hidden = true; return; }
-      var visible = 0;
+    var q = qInput.value.trim();
+    var scores = searchScores(q);
+    var total = 0, counts = {};
+    qClear.hidden = !qInput.value;
+    sections.forEach(function (s, si) {
+      var visible = 0, best = 0;
       s.ids.forEach(function (id) {
-        var it = byId.get(id);
-        if (!it._hay) it._hay = norm(label(it) + ' ' + it.cat + ' ' + it.no);
-        var ok = terms.every(function (t) { return it._hay.indexOf(t) >= 0; });
+        var ok = !scores || scores.has(id);
         cards.get(id).hidden = !ok;
-        if (ok) visible++;
+        if (ok) { visible++; if (scores) best = Math.max(best, scores.get(id)); }
       });
-      s.el.hidden = visible === 0;
-      s.countEl.textContent = ar(visible);
+      counts[s.cat] = visible;
       total += visible;
+      s.best = best;
+      s.el.hidden = visible === 0 || (curCat !== '' && s.cat !== curCat);
+      s.countEl.textContent = ar(visible);
+      var want = s.ids;
+      if (scores && visible) {
+        want = s.ids.slice().sort(function (a, b) {
+          return (scores.get(b) || 0) - (scores.get(a) || 0) || s.ids.indexOf(a) - s.ids.indexOf(b);
+        });
+      }
+      if (!sameOrder(want, s.order)) {
+        want.forEach(function (id) { s.grid.appendChild(cards.get(id)); });
+        s.order = want.slice();
+      }
     });
-    emptyEl.hidden = total > 0 || !ITEMS.length;
+    var secOrder = sections.slice();
+    if (scores) secOrder.sort(function (a, b) { return b.best - a.best || sections.indexOf(a) - sections.indexOf(b); });
+    var cur = Array.prototype.slice.call(catalogEl.children);
+    if (!sameOrder(secOrder.map(function (s) { return s.el; }), cur)) secOrder.forEach(function (s) { catalogEl.appendChild(s.el); });
+
+    chips.forEach(function (c) {          // while searching: only the sections that have results, with their counts
+      var n = c.cat ? (counts[c.cat] || 0) : total;
+      c.countEl.textContent = scores ? ar(n) : '';
+      c.countEl.hidden = !scores;
+      c.el.classList.toggle('zero', !!scores && n === 0);
+      c.el.hidden = !!scores && n === 0 && c.cat !== '' && c.cat !== curCat;
+      c.el.setAttribute('aria-pressed', c.cat === curCat ? 'true' : 'false');
+    });
+    if (scores && chipsEl.scrollLeft) chipsEl.scrollLeft = 0;
+
+    var shown = curCat ? (counts[curCat] || 0) : total;
+    emptyEl.innerHTML = '';
+    emptyEl.hidden = shown > 0 || !ITEMS.length;
+    if (!emptyEl.hidden) {
+      var p = document.createElement('p');
+      if (curCat && total > 0) {
+        p.textContent = 'لا نتائج في قسم «' + curCat + '».';
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'add';
+        b.textContent = 'عرض النتائج في كل الأقسام (' + ar(total) + ')';
+        b.addEventListener('click', function () { selectCat(''); });
+        emptyEl.appendChild(p);
+        emptyEl.appendChild(b);
+      } else {
+        p.textContent = q ? 'لا توجد منتجات مطابقة لـ «' + q + '».' : 'لا توجد منتجات في هذا القسم.';
+        emptyEl.appendChild(p);
+      }
+    }
+  }
+
+  function selectCat(cat) {
+    curCat = cat;
+    applyFilter();
+    window.scrollTo(0, 0);
+    var chip = chips.filter(function (c) { return c.cat === cat; })[0];
+    if (chip && chip.el.scrollIntoView) try { chip.el.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch (e) { }
   }
 
   // ------------------------------------------------------------ changes
@@ -621,7 +772,7 @@
   });
 
   function refreshName(it) {
-    it._hay = null;
+    it._tok = null;
     var card = cards.get(it.id);
     if (card) fillName(card, it);
     if (viewerId === it.id) fillViewerName(it);
@@ -662,7 +813,7 @@
       schedulePdf();
     } else if (e.key === LS_NAMES) {
       names = readJSON(LS_NAMES, {}) || {};
-      ITEMS.forEach(function (it) { it._hay = null; var c = cards.get(it.id); if (c) fillName(c, it); });
+      ITEMS.forEach(function (it) { it._tok = null; var c = cards.get(it.id); if (c) fillName(c, it); });
       applyFilter();
       version++;
       schedulePdf();
@@ -671,8 +822,17 @@
 
   // ------------------------------------------------------------ start
   var searchTimer = 0;
-  qInput.addEventListener('input', function () { clearTimeout(searchTimer); searchTimer = setTimeout(applyFilter, 120); });
-  catSel.addEventListener('change', function () { applyFilter(); window.scrollTo(0, 0); });
+  qInput.addEventListener('input', function () {
+    qClear.hidden = !qInput.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { applyFilter(); window.scrollTo(0, 0); }, 120);
+  });
+  qInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); qInput.blur(); } });  // hide the keyboard to see the results
+  qClear.addEventListener('click', function () { qInput.value = ''; applyFilter(); qInput.focus(); });
+  chipsEl.addEventListener('click', function (e) {
+    var b = e.target.closest('.chip');
+    if (b) selectCat(b.dataset.cat === curCat && b.dataset.cat !== '' ? '' : b.dataset.cat);
+  });
   window.addEventListener('resize', setBarHeight);
   if (window.ResizeObserver) { var ro = new ResizeObserver(setBarHeight); ro.observe(barEl); ro.observe(toolsEl); }
 

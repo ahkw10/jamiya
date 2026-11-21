@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="قائمة الجمعية">
-<link rel="stylesheet" href="app.css?v=41165ffb28">
+<link rel="stylesheet" href="app.css?v=d59c3b2e1c">
 </head>
 <body>
 <header class="brand">
@@ -24,15 +24,16 @@
 <div class="tools" id="tools">
   <label class="search">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.06l4.24 4.24-1.4 1.4-4.24-4.24A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
-    <input id="q" type="search" placeholder="ابحث باسم المنتج" autocomplete="off" enterkeyhint="search" aria-label="بحث">
+    <input id="q" type="search" placeholder="ابحث: حليب، حفاضات، أرز…" autocomplete="off" enterkeyhint="search" aria-label="بحث عن منتج">
+    <button id="qClear" class="q-clear" type="button" aria-label="مسح البحث" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
+    </button>
   </label>
-  <select id="cat" aria-label="القسم">
-    <option value="">كل الأقسام</option>
-  </select>
+  <nav id="chips" class="chips" aria-label="الأقسام"></nav>
 </div>
 
 <main id="catalog" aria-live="polite"></main>
-<p id="empty" class="empty" hidden>لا توجد منتجات مطابقة للبحث.</p>
+<div id="empty" class="empty" hidden></div>
 <div class="spacer" aria-hidden="true"></div>
 
 <!-- Bottom action bar (always reachable) -->
@@ -106,8 +107,8 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="catalog.js?v=2b7f8a4cda"></script>
+<script src="catalog.js?v=e10a7c04f6"></script>
 <script src="pdf.js?v=c332f2b2f6"></script>
-<script src="app.js?v=346593d4fe"></script>
+<script src="app.js?v=cecae49481"></script>
 </body>
 </html>
