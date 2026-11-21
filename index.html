@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="قائمة الجمعية">
-<link rel="stylesheet" href="app.css?v=d59c3b2e1c">
+<link rel="stylesheet" href="app.css?v=1c429c4750">
 </head>
 <body>
 <header class="brand">
@@ -24,15 +24,16 @@
 <div class="tools" id="tools">
   <label class="search">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.06l4.24 4.24-1.4 1.4-4.24-4.24A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
-    <input id="q" type="search" placeholder="ابحث: حليب، حفاضات، أرز…" autocomplete="off" enterkeyhint="search" aria-label="بحث عن منتج">
+    <input id="q" type="search" placeholder="ابحث: نوتيلا، حليب، حفاضات مقاس 5…" autocomplete="off" enterkeyhint="search" aria-label="بحث عن منتج">
     <button id="qClear" class="q-clear" type="button" aria-label="مسح البحث" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
     </button>
   </label>
   <nav id="chips" class="chips" aria-label="الأقسام"></nav>
+  <nav id="heads" class="chips heads" aria-label="أقسام فرعية" hidden></nav>
 </div>
 
-<main id="catalog" aria-live="polite"></main>
+<main id="view" aria-live="polite"></main>
 <div id="empty" class="empty" hidden></div>
 <div class="spacer" aria-hidden="true"></div>
 
@@ -52,6 +53,27 @@
     <button id="downloadBtn" class="download-btn" type="button" hidden disabled>تنزيل القائمة PDF</button>
   </div>
 </footer>
+
+<!-- Options of one group (e.g. all grapes): filters + every pack with its own quantity -->
+<section id="gsheet" class="sheet gsheet" role="dialog" aria-modal="true" aria-labelledby="gTitle" hidden>
+  <div class="sheet-head">
+    <button class="icon-btn" type="button" data-close aria-label="رجوع">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
+    </button>
+    <div class="sheet-title">
+      <h2 id="gTitle"></h2>
+      <p id="gSub" class="sheet-summary"></p>
+    </div>
+  </div>
+  <div id="gTools" class="gtools">
+    <label class="search gsearch" id="gSearchBox" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.06l4.24 4.24-1.4 1.4-4.24-4.24A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
+      <input id="gq" type="search" placeholder="ابحث داخل المجموعة" autocomplete="off" enterkeyhint="search" aria-label="بحث داخل المجموعة">
+    </label>
+    <div id="gFacets" class="gfacets"></div>
+  </div>
+  <div id="gList" class="sheet-list glist"></div>
+</section>
 
 <!-- Review sheet -->
 <section id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
@@ -88,7 +110,7 @@
     <h2 id="vName"></h2>
     <div class="viewer-links">
       <button id="vRename" class="text-btn" type="button">تعديل الاسم</button>
-      <a id="vOrig" class="text-btn" target="_blank" rel="noopener">لقطة الشاشة الأصلية</a>
+      <button id="vGroup" class="text-btn" type="button" hidden>أنواع أخرى</button>
     </div>
     <div id="vCtrl" class="viewer-ctrl"></div>
   </div>
@@ -107,8 +129,8 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="catalog.js?v=1fb0519ec7"></script>
+<script src="catalog.js?v=3359766e4c"></script>
 <script src="pdf.js?v=c332f2b2f6"></script>
-<script src="app.js?v=d2a6a301ea"></script>
+<script src="app.js?v=3a5ee2c9e4"></script>
 </body>
 </html>
