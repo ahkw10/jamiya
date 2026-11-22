@@ -13,12 +13,12 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="قائمة الجمعية">
-<link rel="stylesheet" href="app.css?v=e203534d47">
+<link rel="stylesheet" href="app.css?v=755aea4484">
 </head>
 <body>
 <!-- Home: search, then every section of the store -->
 <header class="top" id="top">
-  <div class="brand"><b>جمعية</b><span id="topNote">لولو + طلبات مارت</span></div>
+  <div class="brand"><b>جمعية</b><span id="topNote">قائمة مشتريات البيت</span></div>
   <label class="search">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.06l4.24 4.24-1.4 1.4-4.24-4.24A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
     <input id="q" type="search" placeholder="ابحثي عن منتج، مثل: نوتيلا ٤٠٠" autocomplete="off" enterkeyhint="search" aria-label="بحث عن منتج">
@@ -26,6 +26,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
     </button>
   </label>
+  <nav id="deptBar" class="dept-bar" aria-label="انتقلي إلى مجموعة أقسام"></nav>
 </header>
 <main id="home" class="home"></main>
 <main id="results" class="results" aria-live="polite" hidden></main>
@@ -39,7 +40,7 @@
   </button>
 </footer>
 
-<!-- One section: shelves of its kinds, the home's usual kinds first -->
+<!-- One home section: shelves of its kinds (or one grid when small), the home's usual first -->
 <section id="pSec" class="page" role="dialog" aria-modal="true" aria-labelledby="secTitle" hidden>
   <div class="page-head">
     <button class="back" type="button" data-close aria-label="رجوع"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5 15.6 12l-7 7-1.4-1.4 5.6-5.6-5.6-5.6L8.6 5Z"/></svg></button>
@@ -48,7 +49,7 @@
     </button>
     <button class="icon-btn" type="button" data-act="find" aria-label="بحث"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.06l4.24 4.24-1.4 1.4-4.24-4.24A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg></button>
   </div>
-  <nav id="secHeads" class="chips-row" aria-label="أقسام فرعية"></nav>
+  <nav id="secHeads" class="chips-row" aria-label="أنواع هذا القسم"></nav>
   <div id="secBody" class="page-body"></div>
 </section>
 
@@ -62,7 +63,7 @@
   <div id="typeBody" class="page-body"></div>
 </section>
 
-<!-- The basket: split by store, with what is known about each price -->
+<!-- The basket: what was chosen and how many (stores and prices are only inside the PDF) -->
 <section id="pCart" class="page" role="dialog" aria-modal="true" aria-labelledby="cartTitle" hidden>
   <div class="page-head">
     <button class="back" type="button" data-close aria-label="رجوع"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5 15.6 12l-7 7-1.4-1.4 5.6-5.6-5.6-5.6L8.6 5Z"/></svg></button>
@@ -91,13 +92,15 @@
 <section id="pItem" class="sheet-wrap" role="dialog" aria-modal="true" aria-labelledby="itName" hidden>
   <div class="sheet item-sheet">
     <button class="icon-btn sheet-x" type="button" data-close aria-label="إغلاق"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg></button>
+    <!-- the photo keeps its own box; the name and size start below it, on the sheet's background -->
     <div class="it-img"><img id="itImg" alt=""></div>
-    <p id="itBadge" class="badge-usual big" hidden>معتاد</p>
-    <h2 id="itName"></h2>
-    <p id="itSize" class="it-size"></p>
-    <p id="itStore" class="it-store"></p>
-    <div id="itCtrl" class="it-ctrl"></div>
-    <button id="itMore" class="link" type="button" hidden></button>
+    <div class="it-info">
+      <p id="itBadge" class="it-badge" hidden>معتاد</p>
+      <h2 id="itName"></h2>
+      <p id="itSize" class="it-size"></p>
+      <div id="itCtrl" class="it-ctrl"></div>
+      <button id="itMore" class="link" type="button" hidden></button>
+    </div>
   </div>
 </section>
 
@@ -132,8 +135,8 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="catalog.js?v=10027ac349"></script>
+<script src="catalog.js?v=bf2d4bde1e"></script>
 <script src="pdf.js?v=c5ee5f6533"></script>
-<script src="app.js?v=d241fcc1c7"></script>
+<script src="app.js?v=94c3646ec9"></script>
 </body>
 </html>

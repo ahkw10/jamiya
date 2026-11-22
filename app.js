@@ -1,6 +1,7 @@
-/* قائمة الجمعية — a phone grocery store: every section from the first screen, shelves of kinds with the home's usual packs
-   first («معتاد»), big product cards with + on each, and a basket split by store (produce from talabat mart, everything
-   else at the cheaper store for the same pack) whose totals say exactly which items they cover. */
+/* قائمة الجمعية — a phone grocery store: every section from the first screen (data/home-sections.json), shelves of kinds
+   with the home's usual packs first («معتاد»), big product cards with + on each, and a basket that only shows what was
+   chosen and how many. Where each item is bought (produce from talabat mart, everything else at the cheaper store for the
+   same pack) and the prices are decided here but shown only inside the PDF that is sent. */
 (function () {
   'use strict';
 
@@ -64,7 +65,6 @@
     });
   }
   function money(fils) { return ar((fils / 1000).toFixed(3)).replace('.', '٫') + ' د.ك'; }
-  function num3(fils) { return ar((fils / 1000).toFixed(3)).replace('.', '٫'); }
   function cssId(id) { return window.CSS && CSS.escape ? CSS.escape(id) : String(id).replace(/["\\]/g, '\\$&'); }
   function thumbUrl(it) { return it.v ? 'img/t/' + encodeURIComponent(it.id) + '.jpg?v=' + it.v : 'img/s/' + encodeURIComponent(it.id) + '.jpg?v=' + SV; }
   function medUrl(it) { return it.v ? 'img/m/' + encodeURIComponent(it.id) + '.jpg?v=' + it.v : 'img/s/' + encodeURIComponent(it.id) + '.jpg?v=' + SV; }
@@ -73,8 +73,6 @@
   function nProducts(n) { return countOf(n, 'منتج واحد', 'منتجان', 'منتجات', 'منتجًا'); }
   function nKinds(n) { return countOf(n, 'نوع واحد', 'نوعان', 'أنواع', 'نوعًا'); }
   function nPieces(n) { return countOf(n, 'قطعة واحدة', 'قطعتان', 'قطع', 'قطعة'); }
-  function nItemsAcc(n) { return countOf(n, 'صنفًا واحدًا', 'صنفين', 'أصناف', 'صنفًا'); }
-  function noPricePhrase(n) { return n === 1 ? 'صنف واحد سعره غير متاح' : n === 2 ? 'صنفان سعرهما غير متاح' : nItems(n) + ' سعرها غير متاح'; }
   function priceDateText(withTime) {
     if (!PRICE_DATE) return '';
     try {
@@ -88,18 +86,16 @@
   // ================================================================== storage (never throws)
   function readJSON(key, def) { try { var raw = localStorage.getItem(key); if (!raw) return def; var v = JSON.parse(raw); return v == null ? def : v; } catch (e) { return def; } }
   function writeJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return false; } }
-  var LS_CART = 'jamiya.cart.v1', LS_NAMES = 'jamiya.names.v1', LS_STORE = 'jamiya.store.v1', LS_HIST = 'jamiya.history.v1', LS_TICKS = 'jamiya.ticks.v1', MAX_QTY = 99;
+  // (jamiya.store.v1 held per-item store choices made in the basket of the previous version; the basket no longer
+  //  offers a choice, so it is left as it is and not read: an item with no clear cheaper store says so in the file)
+  var LS_CART = 'jamiya.cart.v1', LS_NAMES = 'jamiya.names.v1', LS_HIST = 'jamiya.history.v1', LS_TICKS = 'jamiya.ticks.v1', MAX_QTY = 99;
   var cart = new Map(), version = 0, storageWarned = false, cartSavedAt = 0;
   var names = readJSON(LS_NAMES, {}); if (!names || typeof names !== 'object') names = {};
-  var storeChoice = readJSON(LS_STORE, {}); if (!storeChoice || typeof storeChoice !== 'object') storeChoice = {};
   function canonical(id) { var g = 0; while (Object.prototype.hasOwnProperty.call(ALIASES, id) && g++ < 20) id = ALIASES[id]; return id; }
   (function migrate() {
     var moved = false;
     Object.keys(names).forEach(function (id) { var c = canonical(id); if (c !== id) { if (!names[c]) names[c] = names[id]; delete names[id]; moved = true; } });
     if (moved) writeJSON(LS_NAMES, names);
-    var sm = false;
-    Object.keys(storeChoice).forEach(function (id) { var c = canonical(id); if (c !== id) { if (!storeChoice[c]) storeChoice[c] = storeChoice[id]; delete storeChoice[id]; sm = true; } });
-    if (sm) writeJSON(LS_STORE, storeChoice);
   })();
   function loadCart() {
     cart.clear();
@@ -123,7 +119,14 @@
     return gone.length;
   }
   function cartKnown() { var ok = true; cart.forEach(function (q, id) { if (!byId.has(id)) ok = false; }); return ok; }
-  function displayName(it) { var n = names[it.id]; return (typeof n === 'string' && n.trim()) ? n.trim() : (it.name || '').trim(); }
+  // A pack sold under a store's own brand shows without that word in the app: «لولو بيض بني …» → «بيض بني …»,
+  // «… + طلبات شيبس …» → «… + شيبس …». The app names no store; the photo still shows the pack and the PDF keeps the
+  // full name. (Names where the word is part of the product, such as the lettuce «لولو روسو», do not start with it.)
+  var STORE_LEAD = /^(?:لولو|طلبات(?:\s+مارت)?)\s+/, STORE_PLUS = /(\+\s*)طلبات\s+/g;
+  function plainName(n) { var v = n.replace(STORE_LEAD, '').replace(STORE_PLUS, '$1').trim(); return v || n; }
+  function customName(it) { var n = names[it.id]; return (typeof n === 'string' && n.trim()) ? n.trim() : ''; }
+  function displayName(it) { return customName(it) || plainName((it.name || '').trim()); }
+  function fullName(it) { return customName(it) || (it.name || '').trim() || 'منتج'; }      // for search and the PDF
   function label(it) { return displayName(it) || 'منتج'; }
   function history_() { var h = readJSON(LS_HIST, []); return Array.isArray(h) ? h : []; }
 
@@ -144,6 +147,9 @@
   function splitSize(it) {            // {base, size}: «نوتيلا كريمة البندق 400 غ» -> «نوتيلا كريمة البندق» + «400 غ»
     var l = label(it);
     if (it._ss && it._ss.l === l) return it._ss;
+    return (it._ss = splitName(l));
+  }
+  function splitName(l) {
     var out = { l: l, base: l, size: '' };
     var re = new RegExp(SIZE_RE.source, 'g'), m;
     while ((m = re.exec(l))) {
@@ -155,7 +161,6 @@
         break;
       }
     }
-    it._ss = out;
     return out;
   }
 
@@ -179,7 +184,7 @@
   function stripP(t) { for (var i = 0; i < PROCL.length; i++) { var p = PROCL[i]; if (t.length - p.length >= 2 && t.lastIndexOf(p, 0) === 0) return t.slice(p.length); } return t; }
   function prep(it) {
     if (it._tok) return;
-    it._tok = toks(label(it)); it._tokS = it._tok.map(stripP);
+    it._tok = toks(fullName(it)); it._tokS = it._tok.map(stripP);          // the full name, so «لولو بيض» still finds those eggs
     it._gtok = GROUPS[it.g] ? toks(GROUPS[it.g][0]) : [];
   }
   function termScore(it, alts) {
@@ -230,7 +235,7 @@
     (function step() { var end = Math.min(ITEMS.length, i + 1200); for (; i < end; i++) prep(ITEMS[i]); if (i < ITEMS.length) later(step); })();
   }
 
-  // ================================================================== which store: produce from talabat mart, the rest at the cheaper store
+  // ================================================================== which store (for the PDF only): produce from talabat mart, the rest at the cheaper store
   var STORES = { L: 'لولو هايبرماركت', T: 'طلبات مارت' }, SHORT = { L: 'لولو', T: 'طلبات مارت' };
   function offer(it, s) { return it.off ? (s === 'L' ? it.off[0] : it.off[1]) : 0; }          // 0 not listed, -1 price unknown, else fils
   function inStock(it, s) { var f = it.off ? it.off[2] : 0; return s === 'L' ? !(f & 1) : !(f & 2); }
@@ -241,14 +246,13 @@
       return { kind: 'S', s: 'T', why: 'produce', unit: tp > 0 ? tp : null };
     }
     var l = offer(it, 'L'), t = offer(it, 'T');
-    if (!l && !t) return storeChoice[it.id] ? { kind: 'S', s: storeChoice[it.id], why: 'chosen', unit: null, chosen: true, miss: 'store' } : { kind: 'U', why: 'no-store' };
+    if (!l && !t) return { kind: 'U', why: 'no-store' };
     if (l && !t) return { kind: 'S', s: 'L', why: 'only', unit: l > 0 ? l : null };
     if (t && !l) return { kind: 'S', s: 'T', why: 'only', unit: t > 0 ? t : null };
     var li = inStock(it, 'L'), ti = inStock(it, 'T');
     if (li !== ti) { var s1 = li ? 'L' : 'T', p1 = s1 === 'L' ? l : t; return { kind: 'S', s: s1, why: 'stock', unit: p1 > 0 ? p1 : null }; }
     if (l < 0 || t < 0) {
       var miss = l < 0 && t < 0 ? 'both' : l < 0 ? 'L' : 'T';
-      if (storeChoice[it.id]) { var c = storeChoice[it.id], cp = c === 'L' ? l : t; return { kind: 'S', s: c, why: 'chosen', unit: cp > 0 ? cp : null, chosen: true, miss: miss }; }
       return { kind: 'U', why: 'price-missing', miss: miss, known: l > 0 ? { s: 'L', p: l } : t > 0 ? { s: 'T', p: t } : null };
     }
     var cl = l * q, ct = t * q;                 // the shelf price is after any discount; it applies to every unit
@@ -278,9 +282,12 @@
     res.priced = res.L.length + res.T.length - res.missing.L - res.missing.T;
     return res;
   }
-  function lineOrder(a, b) { return a.it.cat - b.it.cat || (a.it.i != null && b.it.i != null ? a.it.i - b.it.i : a.it.g - b.it.g); }
+  // lines follow the home's sections (produce from an old list that is no longer listed goes with its group's sections)
+  function headRank(it) { var hi = headOf(it); if (hi >= 0) return hi; var f = deptHeads(it.cat); return (f.length ? f[0] : HEADS.length) - 0.5; }
+  function headName(it) { var hi = headOf(it); return hi >= 0 ? HEADS[hi][1] : CATS[it.cat] || ''; }
+  function lineOrder(a, b) { return headRank(a.it) - headRank(b.it) || (a.it.i != null && b.it.i != null ? a.it.i - b.it.i : a.it.g - b.it.g); }
   function other(s) { return s === 'L' ? 'T' : 'L'; }
-  // one short line under a basket row: why this store (prices for the chosen quantity)
+  // why a line went to its store (prices for the chosen quantity); used by the tests, never shown in the app
   function whyShort(x, priceShownApart) {
     var d = x.d, q = x.q;
     if (d.kind === 'R') return 'غير متوفر في طلبات مارت، والخضار والفواكه تُشترى منه فقط. احذفيه أو اختاري بديلًا.';
@@ -296,30 +303,19 @@
       case 'cheaper': return 'الأرخص' + (q > 1 ? ' للكمية ' + ar(q) : '') + ': ' + money(d.unit * q) + ' مقابل ' + money(d.other * q) + ' في ' + SHORT[other(d.s)] + '.';
       case 'tie-join': return 'السعر نفسه في المتجرين، فوُضع مع بقية أصنافك من ' + SHORT[d.s] + '.';
       case 'tie-default': return 'السعر نفسه في المتجرين؛ عند التساوي يُوضع في طلبات مارت.';
-      case 'chosen': return d.miss === 'store' ? 'لا نعرف أين يتوفر؛ اخترتِ ' + SHORT[d.s] + '.' : 'سعر ' + SHORT[d.miss === 'both' ? d.s : d.miss] + ' غير متاح؛ اخترتِ ' + SHORT[d.s] + '.';
     }
     return '';
   }
-  function lineFor(it) {                       // the decision as the basket would make it
-    if (cart.has(it.id) && cartKnown()) { var P = plan(), all = P.L.concat(P.T, P.U, P.R); for (var i = 0; i < all.length; i++) if (all[i].it === it) return all[i]; }
-    var d = decide(it, 1);
-    if (d.kind === 'TIE') d = { kind: 'S', s: 'T', why: 'tie-default', unit: d.unit };
-    return { it: it, q: cart.get(it.id) || 1, d: d };
-  }
-  function shownPrice(it) {                    // the price on a card: the store it would be bought from, when known
-    var d = decide(it, 1);
-    return (d.kind === 'S' || d.kind === 'TIE') && d.unit ? money(d.unit) : '';
-  }
 
   // ================================================================== elements
-  var topEl = $('#top'), qInput = $('#q'), qClear = $('#qClear'), homeEl = $('#home'), resultsEl = $('#results');
+  var topEl = $('#top'), qInput = $('#q'), qClear = $('#qClear'), homeEl = $('#home'), resultsEl = $('#results'), deptBar = $('#deptBar');
   var barEl = $('#bar'), cartBtn = $('#cartBtn'), cbCount = $('#cbCount'), cbTitle = $('#cbTitle'), cbSub = $('#cbSub');
   var pSec = $('#pSec'), secTitle = $('#secTitle'), secSub = $('#secSub'), secHeads = $('#secHeads'), secBody = $('#secBody'), secSwitch = $('#secSwitch');
   var pType = $('#pType'), typeTitle = $('#typeTitle'), typeSub = $('#typeSub'), typeTools = $('#typeTools'), typeBody = $('#typeBody');
   var pCart = $('#pCart'), cartSub = $('#cartSub'), cartBody = $('#cartBody'), clearBtn = $('#clearBtn');
   var sendBtn = $('#sendBtn'), sendLabel = $('#sendLabel'), sendNote = $('#sendNote'), previewBtn = $('#previewBtn');
   var pSections = $('#pSections'), sectionsBody = $('#sectionsBody');
-  var pItem = $('#pItem'), itImg = $('#itImg'), itBadge = $('#itBadge'), itName = $('#itName'), itSize = $('#itSize'), itStore = $('#itStore'), itCtrl = $('#itCtrl'), itMore = $('#itMore');
+  var pItem = $('#pItem'), itImg = $('#itImg'), itBadge = $('#itBadge'), itName = $('#itName'), itSize = $('#itSize'), itCtrl = $('#itCtrl'), itMore = $('#itMore');
   var pHist = $('#pHist'), histBody = $('#histBody');
   var previewEl = $('#preview'), pvPages = $('#pvPages'), pvInfo = $('#pvInfo');
   var toastEl = $('#toast');
@@ -339,19 +335,18 @@
       if (wantTrash !== isTrash) { dec.innerHTML = wantTrash ? TRASH : '−'; dec.setAttribute('aria-label', wantTrash ? 'إزالة من السلة' : 'إنقاص الكمية'); }
     } else box.innerHTML = ctrlHTML(q, box === itCtrl);
   }
-  // product card: big photo (with «معتاد» and +)، name، size، price
+  // product card: big photo (with «معتاد» and +), then the name and the pack size
   function card(it) {
     var el = document.createElement('article');
     el.className = 'card'; el.dataset.id = it.id;
-    var ss = splitSize(it), q = cart.get(it.id) || 0, price = shownPrice(it);
+    var ss = splitSize(it), q = cart.get(it.id) || 0;
     el.innerHTML = '<div class="c-img"><button class="pic" type="button"><img alt="" loading="lazy" decoding="async"></button>' +
       (isUsual(it) ? '<span class="badge-usual">معتاد</span>' : '') + '<div class="c-ctrl"></div></div>' +
-      '<div class="c-text"><p class="c-name"></p><p class="c-size"></p><p class="c-price"></p></div>';
+      '<div class="c-text"><p class="c-name"></p><p class="c-size"></p></div>';
     var img = el.querySelector('img'); img.src = thumbUrl(it);
     el.querySelector('.pic').setAttribute('aria-label', 'تفاصيل ' + label(it));
     el.querySelector('.c-name').textContent = arText(ss.base);
     el.querySelector('.c-size').textContent = arText(ss.size);
-    el.querySelector('.c-price').textContent = price;
     el.classList.toggle('on', q > 0);
     var c = el.querySelector('.c-ctrl'); c.innerHTML = ctrlHTML(q);
     if (!q) c.querySelector('button').setAttribute('aria-label', 'إضافة ' + label(it) + ' إلى السلة');
@@ -365,45 +360,76 @@
   function sortedItems(gi) {                  // a kind's packs: the home's usual first, then the store's order
     return (groupItems[gi] || []).slice().sort(function (a, b) { return uscore(b) - uscore(a) || a.i - b.i; });
   }
-  function secGroups(ci) { var out = []; GROUPS.forEach(function (g, gi) { if (HEADS[g[1]][0] === ci) out.push(gi); }); return out; }
-  function secProducts(ci) { var n = 0; GROUPS.forEach(function (g) { if (HEADS[g[1]][0] === ci) n += g[3]; }); return n; }
-  function secUsual(ci) { var n = 0; byId.forEach(function (it) { if (!it.hid && it.cat === ci && isUsual(it)) n++; }); return n; }
-  function secPhoto(ci) {
+  // a section on the home page = one heading of the catalog (data/home-sections.json); the 16 groups only title them
+  function secGroups(hi) { var out = []; GROUPS.forEach(function (g, gi) { if (g[1] === hi) out.push(gi); }); return out; }
+  function secProducts(hi) { var n = 0; GROUPS.forEach(function (g) { if (g[1] === hi) n += g[3]; }); return n; }
+  function secUsual(hi) { var n = 0; byId.forEach(function (it) { if (!it.hid && it.g >= 0 && GROUPS[it.g] && GROUPS[it.g][1] === hi && isUsual(it)) n++; }); return n; }
+  function deptHeads(ci) { var out = []; HEADS.forEach(function (h, hi) { if (h[0] === ci) out.push(hi); }); return out; }
+  function secPhoto(hi) {             // the pack this home buys most in the section, else the biggest kind's photo
+    var top = null, ts = 0;
+    byId.forEach(function (it) { if (!it.hid && it.g >= 0 && GROUPS[it.g] && GROUPS[it.g][1] === hi) { var s = uscore(it); if (s > ts) { ts = s; top = it; } } });
+    if (top) return thumbUrl(top);
     var best = -1, gi = -1;
-    GROUPS.forEach(function (g, i) { if (HEADS[g[1]][0] === ci && (g[4] || 0) > best) { best = g[4] || 0; gi = i; } });
+    GROUPS.forEach(function (g, i) { if (g[1] !== hi) return; var s = (g[4] || 0) * 1000 + g[3]; if (s > best) { best = s; gi = i; } });
     if (gi < 0) return '';
     var g = GROUPS[gi], rep = byId.get(g[2]) || { id: g[2], v: g[5] || '' };
     return thumbUrl(rep);
   }
+  function headOf(it) { return it.g >= 0 && GROUPS[it.g] ? GROUPS[it.g][1] : -1; }
 
   // ================================================================== home: search, then every section
   function renderHome() {
-    homeEl.innerHTML = '';
+    homeEl.innerHTML = ''; deptBar.innerHTML = '';
     var frag = document.createDocumentFragment();
     var notes = document.createElement('div'); notes.id = 'homeNotes'; frag.appendChild(notes);
-    var total = 0; GROUPS.forEach(function (g) { total += g[3]; });
-    var h = document.createElement('h2'); h.className = 'h2'; h.innerHTML = 'الأقسام <small></small>';
-    h.querySelector('small').textContent = arNum(total) + ' منتج من لولو وطلبات مارت';
-    frag.appendChild(h);
-    var grid = document.createElement('div'); grid.className = 'sec-grid';
-    CATS.forEach(function (name, ci) {
-      if (!secProducts(ci)) return;
-      var b = document.createElement('button'); b.type = 'button'; b.className = 'sec-tile'; b.dataset.sec = ci;
-      var u = secUsual(ci);
-      b.innerHTML = '<span class="st-img"><img alt="" loading="lazy" decoding="async"></span><span class="st-name"></span>' + (u ? '<span class="st-usual"></span>' : '');
-      b.querySelector('img').src = secPhoto(ci);
-      b.querySelector('.st-name').textContent = name;
-      if (u) b.querySelector('.st-usual').textContent = ar(u) + ' معتاد';
-      b.setAttribute('aria-label', name + (u ? '، فيه ' + nProducts(u) + ' من معتادكم' : ''));
-      grid.appendChild(b);
-    });
-    frag.appendChild(grid);
+    var count = 0; HEADS.forEach(function (h, hi) { if (secProducts(hi)) count++; });
     var help = document.createElement('p'); help.className = 'home-help';
-    help.textContent = 'داخل كل قسم تظهر المنتجات التي تشترونها عادةً أولًا وعليها «معتاد»، ثم بقية الأنواع والعبوات. اضغطي + لإضافة أي منتج.';
+    help.textContent = ar(count) + ' قسمًا، مجمّعة تحت عناوينها. المنتجات التي تشترونها عادةً في أول كل قسم وعليها «معتاد».';
     frag.appendChild(help);
+    CATS.forEach(function (dname, ci) {
+      var heads = deptHeads(ci).filter(function (hi) { return secProducts(hi); });
+      if (!heads.length) return;
+      var block = document.createElement('section'); block.className = 'dept'; block.id = 'd' + ci;
+      var h = document.createElement('h2'); h.className = 'dept-h'; h.innerHTML = '<span></span><small></small>';
+      h.firstChild.textContent = dname; h.lastChild.textContent = countOf(heads.length, 'قسم واحد', 'قسمان', 'أقسام', 'قسمًا');
+      block.appendChild(h);
+      var grid = document.createElement('div'); grid.className = 'sec-grid';
+      heads.forEach(function (hi) {
+        var name = HEADS[hi][1], u = secUsual(hi);
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'sec-tile'; b.dataset.sec = hi;
+        b.innerHTML = '<span class="st-img"><img alt="" loading="lazy" decoding="async"></span><span class="st-name"></span>' + (u ? '<span class="st-usual"></span>' : '');
+        b.querySelector('img').src = secPhoto(hi);
+        b.querySelector('.st-name').textContent = name;
+        if (u) b.querySelector('.st-usual').textContent = ar(u) + ' معتاد';
+        b.setAttribute('aria-label', name + (u ? '، فيه ' + nProducts(u) + ' من معتادكم' : ''));
+        grid.appendChild(b);
+      });
+      block.appendChild(grid);
+      frag.appendChild(block);
+      var chip = document.createElement('button'); chip.type = 'button'; chip.className = 'chip'; chip.dataset.dept = ci; chip.textContent = dname;
+      deptBar.appendChild(chip);
+    });
     homeEl.appendChild(frag);
-    renderHomeNotes();
+    renderHomeNotes(); spyDept();
   }
+  // the group names above the sections jump to their sections and follow the scroll
+  var deptRaf = 0;
+  function spyDept() {
+    deptRaf = 0;
+    if (homeEl.hidden || pages.length) return;
+    var limit = topEl.getBoundingClientRect().bottom + 20, cur = null, btns = deptBar.children;
+    for (var i = 0; i < btns.length; i++) { var s = document.getElementById('d' + btns[i].dataset.dept); if (s && s.getBoundingClientRect().top <= limit) cur = btns[i]; else if (s) break; }
+    cur = cur || btns[0];
+    for (var j = 0; j < btns.length; j++) btns[j].setAttribute('aria-pressed', btns[j] === cur ? 'true' : 'false');
+    if (cur && cur !== spyDept.last) { spyDept.last = cur; try { cur.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (e) { } }
+  }
+  window.addEventListener('scroll', function () { if (!deptRaf) deptRaf = requestAnimationFrame(spyDept); }, { passive: true });
+  deptBar.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-dept]'); if (!b) return;
+    var s = document.getElementById('d' + b.dataset.dept); if (!s) return;
+    var dy = s.getBoundingClientRect().top - topEl.offsetHeight + 1;
+    window.scrollTo({ top: window.pageYOffset + dy, behavior: Math.abs(dy) > window.innerHeight * 2 ? 'auto' : 'smooth' });
+  });
   function sameAsCart(items) {
     var o = {}, n = 0;
     Object.keys(items || {}).forEach(function (raw) { o[canonical(raw)] = Math.floor(items[raw]); });
@@ -479,51 +505,45 @@
   qInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); qInput.blur(); } });
   qClear.addEventListener('click', function () { qInput.value = ''; renderResults(); qInput.focus(); });
 
-  // ================================================================== a section: shelves of kinds, the home's usual kinds first
+  // ================================================================== a section: its kinds as shelves, the home's usual first
   var secState = null, secIO = null;
-  function openSection(ci, keepPage) {
-    secState = { ci: ci, head: null, blocks: [], done: 0 };
-    secTitle.textContent = CATS[ci] || '';
-    secSub.textContent = nProducts(secProducts(ci)) + '، ' + nKinds(secGroups(ci).length);
-    // sub-sections as filters
+  function secKinds(hi) { return secGroups(hi).filter(function (gi) { return GROUPS[gi][3] > 0; }); }
+  function openSection(hi, keepPage) {
+    var h = HEADS[hi]; if (!h) return;
+    var kinds = secKinds(hi);
+    if (kinds.length === 1) { openType(kinds[0], null, hi); return; }      // one kind: straight to all its packs, with filters
+    secState = { hi: hi, blocks: [], done: 0 };
+    secTitle.textContent = h[1];
+    secSub.textContent = (CATS[h[0]] || '') + '، ' + nProducts(secProducts(hi));
+    // the kinds of this section: each chip opens all its packs, with filters
     secHeads.innerHTML = '';
-    var heads = []; secGroups(ci).forEach(function (gi) { var h = GROUPS[gi][1]; if (heads.indexOf(h) < 0) heads.push(h); });
-    if (heads.length > 1) {
-      [null].concat(heads).forEach(function (h) {
-        var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; if (h != null) b.dataset.head = h;
-        b.textContent = h == null ? 'الكل' : HEADS[h][1];
-        b.setAttribute('aria-pressed', h == null ? 'true' : 'false');
-        secHeads.appendChild(b);
-      });
-    }
-    secHeads.hidden = heads.length < 2;
+    kinds.forEach(function (gi) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.dataset.g = gi;
+      b.innerHTML = '<span></span><small></small>';
+      b.firstChild.textContent = arText(GROUPS[gi][0]); b.lastChild.textContent = ar(GROUPS[gi][3]);
+      b.setAttribute('aria-label', 'كل ' + GROUPS[gi][0] + '، ' + nProducts(GROUPS[gi][3]));
+      secHeads.appendChild(b);
+    });
+    secHeads.hidden = kinds.length < 2;
     secBody.innerHTML = '<p class="loading">جارٍ تحميل المنتجات…</p>';
     if (!keepPage) openPage(pSec);
-    afterItems(function () { if (secState && secState.ci === ci) buildSection(); });
+    afterItems(function () { if (secState && secState.hi === hi) buildSection(); });
   }
   function kindInfo(gi) {
     var items = sortedItems(gi), score = 0;
     items.forEach(function (it) { var s = uscore(it); if (s > score) score = s; });
-    return { gi: gi, head: GROUPS[gi][1], items: items, score: score };
+    return { gi: gi, items: items, score: score };
   }
   function buildSection() {
-    var st = secState, ci = st.ci, kinds = secGroups(ci).map(kindInfo).filter(function (k) { return k.items.length; });
-    var blocks = [];
-    var total = kinds.reduce(function (a, k) { return a + k.items.length; }, 0);
-    if (total <= 40) {                          // a small section reads best as one grid
+    var st = secState, kinds = secKinds(st.hi).map(kindInfo).filter(function (k) { return k.items.length; });
+    var blocks = [], total = kinds.reduce(function (a, k) { return a + k.items.length; }, 0);
+    if (total <= 40 || kinds.length < 2) {           // a small section reads best as one grid, the usual first
       var all = []; kinds.forEach(function (k) { all = all.concat(k.items); });
       all.sort(function (a, b) { return uscore(b) - uscore(a) || a.i - b.i; });
       blocks.push({ grid: all });
-    } else if (st.head == null) {
-      var usual = kinds.filter(function (k) { return k.score > 0; }).sort(function (a, b) { return b.score - a.score || a.gi - b.gi; });
-      var rest = kinds.filter(function (k) { return !(k.score > 0); });
-      if (usual.length) { blocks.push({ title: 'ما تشترونه عادةً من هذا القسم' }); usual.forEach(function (k) { blocks.push({ shelf: k }); }); }
-      var last = null;
-      rest.forEach(function (k) { if (k.head !== last) { last = k.head; blocks.push({ title: (usual.length ? 'بقية ' : '') + HEADS[k.head][1] }); } blocks.push({ shelf: k }); });
-    } else {
-      var inHead = kinds.filter(function (k) { return k.head === st.head; });
-      inHead.filter(function (k) { return k.score > 0; }).sort(function (a, b) { return b.score - a.score || a.gi - b.gi; }).forEach(function (k) { blocks.push({ shelf: k }); });
-      inHead.filter(function (k) { return !(k.score > 0); }).forEach(function (k) { blocks.push({ shelf: k }); });
+    } else {                                         // a shelf per kind: the kinds this home buys come first
+      kinds.filter(function (k) { return k.score > 0; }).sort(function (a, b) { return b.score - a.score || a.gi - b.gi; }).forEach(function (k) { blocks.push({ shelf: k }); });
+      kinds.filter(function (k) { return !(k.score > 0); }).forEach(function (k) { blocks.push({ shelf: k }); });
     }
     st.blocks = blocks; st.done = 0;
     secBody.innerHTML = ''; secBody.scrollTop = 0;
@@ -546,7 +566,6 @@
     if (!window.IntersectionObserver && st.done < st.blocks.length) setTimeout(function () { moreBlocks(n); }, 50);
   }
   function blockEl(b) {
-    if (b.title) { var t = document.createElement('h3'); t.className = 'head-title'; t.textContent = b.title; return t; }
     if (b.grid) { var g = document.createElement('div'); g.className = 'grid'; b.grid.forEach(function (it) { g.appendChild(card(it)); }); return g; }
     var k = b.shelf, G = GROUPS[k.gi], sec = document.createElement('section'); sec.className = 'shelf';
     var head = document.createElement('div'); head.className = 'shelf-h';
@@ -566,24 +585,25 @@
     sec.appendChild(row);
     return sec;
   }
-  secHeads.addEventListener('click', function (e) {
-    var b = e.target.closest('.chip'); if (!b || !secState) return;
-    secHeads.querySelectorAll('.chip').forEach(function (c) { c.setAttribute('aria-pressed', c === b ? 'true' : 'false'); });
-    secState.head = b.dataset.head != null ? +b.dataset.head : null;
-    buildSection();
-    try { b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch (er) { }
-  });
+  // every section, under its group's name (opened from the title of a section page)
   function openSections() {
     sectionsBody.innerHTML = '';
-    CATS.forEach(function (name, ci) {
-      var n = secProducts(ci); if (!n) return;
-      var b = document.createElement('button'); b.type = 'button'; b.className = 'sec-row'; b.dataset.sec = ci;
-      if (secState && secState.ci === ci) b.setAttribute('aria-current', 'true');
-      b.innerHTML = '<img alt="" loading="lazy"><b></b><small></small>';
-      b.querySelector('img').src = secPhoto(ci); b.querySelector('b').textContent = name; b.querySelector('small').textContent = nProducts(n);
-      sectionsBody.appendChild(b);
+    var frag = document.createDocumentFragment(), cur = null, curHi = secState ? secState.hi : -1;
+    CATS.forEach(function (dname, ci) {
+      var heads = deptHeads(ci).filter(function (hi) { return secProducts(hi); });
+      if (!heads.length) return;
+      var t = document.createElement('h3'); t.className = 'sheet-dept'; t.textContent = dname; frag.appendChild(t);
+      heads.forEach(function (hi) {
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'sec-row'; b.dataset.sec = hi;
+        if (hi === curHi) { b.setAttribute('aria-current', 'true'); cur = b; }
+        b.innerHTML = '<img alt="" loading="lazy" decoding="async"><b></b><small></small>';
+        b.querySelector('img').src = secPhoto(hi); b.querySelector('b').textContent = HEADS[hi][1]; b.querySelector('small').textContent = nProducts(secProducts(hi));
+        frag.appendChild(b);
+      });
     });
+    sectionsBody.appendChild(frag);
     openPage(pSections);
+    if (cur) try { cur.scrollIntoView({ block: 'center' }); } catch (e) { }
   }
   secSwitch.addEventListener('click', openSections);
 
@@ -624,6 +644,7 @@
     it._fv = fv;
     return fv;
   }
+  var STORE_BRAND = /^(?:لولو|طلبات|طلبات مارت|لولو هايبرماركت|lulu|talabat)$/i;
   var FACET_TITLES = { fit: 'المقاس', stage: 'المرحلة', fat: 'الدسم', color: 'اللون', origin: 'المنشأ', brand: 'العلامة', kind: 'النوع', size: 'الحجم' };
   function numOf(s) { var m = norm(s).match(/\d+(?:\.\d+)?/); return m ? parseFloat(m[0]) : 0; }
   var kindLabels = new Map();
@@ -642,8 +663,9 @@
     add('fat', tally('fat').sort(function (a, b) { return b[1] - a[1]; }));
     add('color', tally('color').sort(function (a, b) { return b[1] - a[1]; }));
     add('origin', tally('origin').sort(function (a, b) { return b[1] - a[1]; }));
-    add('brand', tally('brand').filter(function (e) { return e[1] >= 2; }).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 14));
-    var skip = new Set();
+    // a store's own brand is not offered as a filter (the app names no store)
+    add('brand', tally('brand').filter(function (e) { return e[1] >= 2 && !STORE_BRAND.test(e[0].trim()); }).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 14));
+    var skip = new Set(['لولو', 'طلبات', 'مارت', 'هايبرماركت', 'lulu', 'talabat']);
     toks(gname).forEach(function (w) { skip.add(w); skip.add(stripP(w)); });
     items.forEach(function (it) { if (it.brand) toks(it.brand).forEach(function (w) { skip.add(w); }); });
     Object.keys(COLORS).forEach(function (w) { skip.add(w); }); ORIGINS.forEach(function (w) { skip.add(w); skip.add(w + 'ه'); });
@@ -691,11 +713,13 @@
 
   // ---------------------------------------------------------------- every pack of one kind
   var tState = null;
-  function openType(gi, focusId) {
+  // hi: opened as a home section that holds this one kind (titled with the section's name)
+  function openType(gi, focusId, hi) {
     var g = GROUPS[gi]; if (!g) return;
-    tState = { gi: gi, items: [], facets: [], sel: {}, sort: 'usual', text: '', shown: 0, list: [], focus: focusId || null };
-    typeTitle.textContent = arText(g[0]);
-    typeSub.textContent = nProducts(g[3]) + '، ' + (CATS[catOfGroup(gi)] || '');
+    tState = { gi: gi, items: [], facets: [], sel: {}, text: '', shown: 0, list: [], focus: focusId || null };
+    var title = hi != null && HEADS[hi] ? HEADS[hi][1] : arText(g[0]), secName = HEADS[g[1]] ? HEADS[g[1]][1] : '';
+    typeTitle.textContent = title;
+    typeSub.textContent = nProducts(g[3]) + '، ' + (secName && secName !== title && arText(secName) !== title ? secName : (CATS[catOfGroup(gi)] || ''));
     typeTools.innerHTML = ''; typeTools.hidden = true;
     typeBody.innerHTML = '<p class="loading">جارٍ التحميل…</p>';
     if (pType.hidden) openPage(pType);
@@ -709,12 +733,7 @@
   function typeFiltered() {
     var base = tState.items;
     if (tState.text) { var r = searchItems(base, tState.text); base = r ? r.map(function (x) { return x.it; }) : base; }
-    var list = base.filter(function (it) { return itemMatches(it, tState.sel); });
-    if (tState.sort === 'price') {
-      var pr = function (it) { var d = decide(it, 1); return (d.kind === 'S' || d.kind === 'TIE') && d.unit ? d.unit : Infinity; };
-      list = list.slice().sort(function (a, b) { return pr(a) - pr(b) || a.i - b.i; });
-    }
-    return list;
+    return base.filter(function (it) { return itemMatches(it, tState.sel); });
   }
   function renderTools() {
     typeTools.innerHTML = '';
@@ -729,12 +748,6 @@
       });
       typeTools.appendChild(row);
     });
-    if (tState.items.length > 3) {
-      var sr = document.createElement('div'); sr.className = 'frow';
-      sr.innerHTML = '<span class="f-t">الترتيب:</span><button type="button" class="chip" data-sort="usual">المعتاد أولًا</button><button type="button" class="chip" data-sort="price">الأقل سعرًا</button>';
-      sr.querySelectorAll('[data-sort]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.sort === tState.sort ? 'true' : 'false'); });
-      typeTools.appendChild(sr);
-    }
     typeTools.hidden = !typeTools.children.length;
   }
   function renderType(reset) {
@@ -742,7 +755,7 @@
       tState.list = typeFiltered(); tState.shown = 0; typeBody.innerHTML = ''; typeBody.scrollTop = 0;
       var info = document.createElement('p'); info.className = 'count-line';
       var usualN = tState.list.filter(isUsual).length;
-      info.textContent = nProducts(tState.list.length) + (usualN && tState.sort === 'usual' ? '، ' + (usualN === 1 ? 'المعتاد في الأول' : ar(usualN) + ' من معتادكم في الأول') : '');
+      info.textContent = nProducts(tState.list.length) + (usualN ? '، ' + (usualN === 1 ? 'المعتاد في الأول' : ar(usualN) + ' من معتادكم في الأول') : '');
       typeBody.appendChild(info);
       if (!tState.list.length) {
         var e = document.createElement('div'); e.className = 'empty-box';
@@ -764,7 +777,6 @@
   }
   typeTools.addEventListener('click', function (e) {
     var c = e.target.closest('.chip'); if (!c || !tState) return;
-    if (c.dataset.sort) { tState.sort = c.dataset.sort; renderTools(); renderType(true); return; }
     var k = c.dataset.fk, v = c.dataset.fv;
     if (v == null || tState.sel[k] === v) delete tState.sel[k]; else tState.sel[k] = v;
     renderTools(); renderType(true);
@@ -776,12 +788,10 @@
   function openItem(id) {
     var it = byId.get(id); if (!it) return;
     itemId = id; itCtrl.dataset.id = id;
-    var ss = splitSize(it), g = GROUPS[it.g], x = lineFor(it);
+    var ss = splitSize(it), g = GROUPS[it.g];
     itImg.src = medUrl(it); itImg.alt = label(it);
     itBadge.hidden = !isUsual(it);
     itName.textContent = arText(ss.base); itSize.textContent = arText(ss.size);
-    var store = x.d.kind === 'S' ? 'يُشترى من ' + SHORT[x.d.s] + (x.d.unit ? '، ' + money(x.d.unit) : '، السعر غير متاح') + '. ' : x.d.kind === 'U' ? 'المتجر غير محدد. ' : '';
-    itStore.textContent = store + whyShort(x);
     itCtrl.innerHTML = ctrlHTML(cart.get(id) || 0, true);
     var inType = topPage() === pType && tState && tState.gi === it.g;
     itMore.hidden = !g || g[3] < 2 || inType || it.hid;
@@ -819,82 +829,45 @@
       if (act === 'clearq') { qInput.value = ''; renderResults(); return; }
       if (act === 'tclear') { tState.sel = {}; renderTools(); renderType(true); return; }
       if (act === 'hopen') { openHistory(); return; }
-      if (act === 'hadd') { var hi = +btn.dataset.h; if (topPage() === pHist) closeTop(); afterItems(function () { addFromHistory(hi); }); return; }
-      if (act === 'bulk') {
-        var ids = (btn.dataset.ids || '').split('|').filter(Boolean);
-        ids.forEach(function (i) { storeChoice[i] = btn.dataset.s; });
-        storeChanged(); toast('وُضعت هذه الأصناف (' + ar(ids.length) + ') في ' + SHORT[btn.dataset.s] + ' فقط، ويمكن تغيير أي صنف منها.'); return;
-      }
-      if (act === 'choose') {
-        var cid = btn.closest('[data-id]').dataset.id;
-        if (!btn.dataset.s || storeChoice[cid] === btn.dataset.s) delete storeChoice[cid]; else storeChoice[cid] = btn.dataset.s;
-        storeChanged(); return;
-      }
+      if (act === 'hadd') { var hn = +btn.dataset.h; if (topPage() === pHist) closeTop(); afterItems(function () { addFromHistory(hn); }); return; }
       if (act === 'newlist') { newList(); return; }
       if (act === 'find') { while (pages.length) closeTop(); setTimeout(function () { qInput.focus(); }, 50); return; }
       return;
     }
     var sec = t.closest('[data-sec]');
     if (sec) {
-      var ci = +sec.dataset.sec;
-      if (topPage() === pSections) { closeTop(); if (!pSec.hidden) { setTimeout(function () { openSection(ci, true); }, 0); return; } }
-      openSection(ci); return;
+      var hi = +sec.dataset.sec;
+      if (topPage() === pSections) { closeTop(); if (!pSec.hidden) { setTimeout(function () { openSection(hi, true); }, 0); return; } }
+      openSection(hi); return;
     }
     var gl = t.closest('[data-g]'); if (gl) { openType(+gl.dataset.g); return; }
     var pic = t.closest('.pic, .c-name'); if (pic) { var hh = pic.closest('[data-id]'); if (hh) openItem(hh.dataset.id); return; }
     if (t.closest('[data-close]')) { closeTop(); return; }
     if (t.classList && t.classList.contains('sheet-wrap')) closeTop();
   });
-  function storeChanged() { writeJSON(LS_STORE, storeChoice); version++; if (!pCart.hidden) renderCart(); schedulePdf(); }
 
-  // ================================================================== the basket: by store, with honest totals
-  function lineEl(x, kind) {
+  // ================================================================== the basket: what was chosen and how many, by section
+  // (no store and no price here: the PDF says where each item is bought and what it costs)
+  function lineEl(x) {
     var it = x.it, ss = splitSize(it), row = document.createElement('div');
     row.className = 'line'; row.dataset.id = it.id;
     row.innerHTML = '<button class="pic" type="button"><img alt="" loading="lazy" decoding="async"></button><div class="l-main">' +
-      '<p class="l-name"></p><p class="l-size"></p><div class="l-row"><div class="ctrl"></div><p class="l-price"></p></div><p class="l-why"></p></div>';
+      '<p class="l-name"></p><p class="l-size"></p><div class="l-row"><div class="ctrl"></div></div></div>';
     row.querySelector('img').src = thumbUrl(it);
     row.querySelector('.pic').setAttribute('aria-label', 'تفاصيل ' + label(it));
     row.querySelector('.l-name').textContent = arText(ss.base);
     row.querySelector('.l-size').textContent = arText(ss.size);
     row.querySelector('.ctrl').innerHTML = ctrlHTML(x.q);
-    var pr = row.querySelector('.l-price');
-    if (x.d.kind === 'S' && x.d.unit) pr.innerHTML = (x.q > 1 ? num3(x.d.unit) + ' × ' + ar(x.q) + ' = ' : '') + '<b>' + money(x.d.unit * x.q) + '</b>';
-    else if (x.d.kind === 'S') pr.textContent = 'السعر غير متاح';
-    else if (x.d.kind === 'U' && x.d.known) pr.textContent = SHORT[x.d.known.s] + ': ' + money(x.d.known.p * x.q);
-    var why = row.querySelector('.l-why'); why.textContent = whyShort(x, kind === 'U');
-    if (kind === 'R') why.classList.add('warn');
-    var main = row.querySelector('.l-main');
-    if (kind === 'U') {
-      var ch = document.createElement('div'); ch.className = 'choose';
-      ch.innerHTML = '<span>اشتري هذا الصنف من:</span><span class="seg"><button type="button" class="L" data-act="choose" data-s="L" aria-pressed="false">لولو</button><button type="button" class="T" data-act="choose" data-s="T" aria-pressed="false">طلبات مارت</button></span>';
-      main.appendChild(ch);
-    } else if (x.d.chosen) {
-      var cc = document.createElement('div'); cc.className = 'choose';
-      cc.innerHTML = '<span class="chosen-tag"></span><button type="button" class="link" data-act="choose" style="min-height:30px">إلغاء اختياري</button>';
-      cc.querySelector('.chosen-tag').textContent = 'اختيارك لهذا الصنف فقط';
-      main.appendChild(cc);
+    if (x.review) {
+      var w = document.createElement('p'); w.className = 'l-why warn'; w.textContent = 'غير متوفر حاليًا. احذفيه أو اختاري بديلًا.';
+      row.querySelector('.l-main').appendChild(w);
     }
     return row;
   }
-  function storeBlock(code, title, sub, why, lines, kind) {
-    var box = document.createElement('section'); box.className = 'store';
-    var head = document.createElement('div'); head.className = 'store-h ' + code;
-    head.innerHTML = '<h3></h3><small></small>' + (why ? '<span class="why"></span>' : '');
-    head.querySelector('h3').textContent = title; head.querySelector('small').textContent = sub;
-    if (why) head.querySelector('.why').textContent = why;
-    box.appendChild(head);
-    var lastCat = null;
-    lines.forEach(function (x) {
-      if (x.it.cat !== lastCat) { lastCat = x.it.cat; var h = document.createElement('p'); h.className = 'cat-h'; h.textContent = CATS[lastCat] || ''; box.appendChild(h); }
-      box.appendChild(lineEl(x, kind));
-    });
-    return box;
-  }
-  function coverage(n, missing) {             // «للأصناف الخمسة» / «لـ ٣ من ٥ أصناف»
-    var priced = n - missing;
-    if (!missing) return n === 1 ? 'للصنف' : n === 2 ? 'للصنفين' : 'لكل الأصناف (' + ar(n) + ')';
-    return 'لـ ' + ar(priced) + ' من ' + nItems(n);
+  function cartLines() {                       // in the order of the home's sections
+    var out = [];
+    cart.forEach(function (q, id) { var it = byId.get(id); if (it) out.push({ it: it, q: q, review: decide(it, q).kind === 'R' }); });
+    return out.sort(lineOrder);
   }
   function renderCart() {
     var top = cartBody.scrollTop, n = cart.size;
@@ -906,48 +879,19 @@
       updateSend(); return;
     }
     if (!cartKnown()) { cartBody.innerHTML = '<p class="loading">جارٍ تحميل السلة…</p>'; afterItems(function () { pruneCart(); if (!pCart.hidden) renderCart(); }); return; }
-    var P = plan(), pieces = 0, frag = document.createDocumentFragment();
-    cart.forEach(function (q) { pieces += q; });
-    cartSub.textContent = nItems(n) + '، ' + nPieces(pieces);
-    // where everything goes, and exactly what the amount covers
-    var sum = document.createElement('div'); sum.className = 'c-summary';
-    var rows = '<p class="cs-title">توزيع السلة على المتجرين</p>';
-    ['T', 'L'].forEach(function (s) {
-      if (!P[s].length) return;
-      rows += '<div class="cs-line"><span><i class="dot ' + s + '"></i>' + SHORT[s] + ': ' + nItems(P[s].length) + '</span><b>' +
-        (P.total[s] ? money(P.total[s]) + (P.missing[s] ? ' <small>' + coverage(P[s].length, P.missing[s]) + '</small>' : '') : 'بلا سعر معروف') + '</b></div>';
-    });
-    if (P.U.length) rows += '<div class="cs-line"><span><i class="dot U"></i>لم يُحدَّد المتجر: ' + nItems(P.U.length) + '</span><b>—</b></div>';
-    if (P.R.length) rows += '<div class="cs-line"><span><i class="dot R"></i>تحتاج مراجعة: ' + nItems(P.R.length) + '</span><b>—</b></div>';
-    var known = P.total.L + P.total.T;
-    rows += '<div class="cs-line cs-total"><span>' + (P.priced === P.lines ? 'المجموع' : 'المبلغ المعروف') + '</span><b class="amount">' + (known ? money(known) : '—') + '</b></div>';
-    var noPrice = P.lines - P.priced;
-    rows += '<p class="cs-note">' + (noPrice ? (P.priced ? 'يشمل ' + nItemsAcc(P.priced) + ' من ' + nItems(P.lines) + ' فقط؛ ' : 'لا يشمل أي صنف؛ ') + noPricePhrase(noPrice) + '، فالمجموع الفعلي أعلى.' :
-      'يشمل كل الأصناف (' + ar(P.lines) + ').') + (PRICE_DATE ? ' بحسب آخر أسعار محفوظة (' + priceDateText() + ')، دون التوصيل.' : '') + '</p>';
-    sum.innerHTML = rows;
-    frag.appendChild(sum);
-    ['T', 'L'].forEach(function (s) {
-      if (!P[s].length) return;
-      frag.appendChild(storeBlock(s, STORES[s], nItems(P[s].length) + (P.total[s] ? '، ' + money(P.total[s]) : ''), '', P[s], 'S'));
-      var box = frag.lastChild, ss = document.createElement('div'); ss.className = 'store-sum';
-      ss.innerHTML = '<span></span><b></b>';
-      ss.firstChild.textContent = 'مجموع ' + SHORT[s] + (P.missing[s] ? ' (لا يشمل ' + (P.missing[s] === 1 ? 'صنفًا سعره غير متاح' : P.missing[s] === 2 ? 'صنفين سعرهما غير متاح' : nItems(P.missing[s]) + ' سعرها غير متاح') + ')' : '');
-      ss.lastChild.textContent = P.total[s] ? money(P.total[s]) : '—';
-      box.appendChild(ss);
-    });
-    if (P.U.length) {
-      var ub = storeBlock('U', 'لم يُحدَّد المتجر', nItems(P.U.length), 'لا تكفي الأسعار لمعرفة الأرخص. اختاري المتجر، أو اتركيها فتصل في الملف تحت «بحاجة إلى تحديد المتجر».', P.U, 'U');
-      if (P.U.length > 1) {
-        var bulk = document.createElement('div'); bulk.className = 'bulk';
-        var ids = P.U.map(function (x) { return x.it.id; }).join('|');
-        bulk.innerHTML = '<span></span><div class="row"><button type="button" class="btn L" data-act="bulk" data-s="L">كلها من لولو</button><button type="button" class="btn T" data-act="bulk" data-s="T">كلها من طلبات مارت</button></div>';
-        bulk.firstChild.textContent = 'اختيار واحد يُطبَّق على هذه الأصناف (' + ar(P.U.length) + ') فقط، ويُحفظ لكلٍّ منها في القوائم القادمة:';
-        bulk.querySelectorAll('[data-act="bulk"]').forEach(function (b) { b.dataset.ids = ids; });
-        ub.insertBefore(bulk, ub.children[1]);
+    var lines = cartLines(), pieces = 0, frag = document.createDocumentFragment(), box = null, last = null;
+    lines.forEach(function (x) { pieces += x.q; });
+    cartSub.textContent = nItems(lines.length) + '، ' + nPieces(pieces);
+    lines.forEach(function (x) {
+      var k = headRank(x.it);
+      if (k !== last) {
+        last = k;
+        box = document.createElement('section'); box.className = 'c-group';
+        var h = document.createElement('h3'); h.className = 'c-group-h'; h.textContent = headName(x.it); box.appendChild(h);
+        frag.appendChild(box);
       }
-      frag.appendChild(ub);
-    }
-    if (P.R.length) frag.appendChild(storeBlock('R', 'تحتاج مراجعة', nItems(P.R.length), 'خضار وفواكه من قائمة قديمة غير متوفرة في طلبات مارت.', P.R, 'R'));
+      box.appendChild(lineEl(x));
+    });
     var links = document.createElement('div'); links.className = 'cart-links';
     if (history_().length) links.innerHTML = '<button type="button" class="link" data-act="hopen">القوائم السابقة</button>';
     frag.appendChild(links);
@@ -982,14 +926,14 @@
   function pdfDoc() {
     var P = plan();
     function entry(x) {
-      var ss = splitSize(x.it);
+      var ss = splitName(fullName(x.it));      // the file keeps the pack's full name, store brand included
       // an undecided line shows the one price that is known, so the shopper can decide in the store
       var hint = x.d.kind === 'U' && x.d.known ? SHORT[x.d.known.s] + ': ' + money(x.d.known.p * x.q) : '';
       return { name: ss.base, size: ss.size, qty: x.q, img: medUrl(x.it), unit: x.d.unit || null, total: x.d.unit ? x.d.unit * x.q : null, hint: hint };
     }
-    function sections(lines) {
+    function sections(lines) {                 // inside each store: the home's sections, in the home's order
       var out = [], cur = null;
-      lines.forEach(function (x) { if (!cur || cur.cat !== x.it.cat) { cur = { cat: x.it.cat, name: CATS[x.it.cat] || '', items: [] }; out.push(cur); } cur.items.push(entry(x)); });
+      lines.forEach(function (x) { var k = headRank(x.it); if (!cur || cur.k !== k) { cur = { k: k, name: headName(x.it), items: [] }; out.push(cur); } cur.items.push(entry(x)); });
       return out;
     }
     var stores = [];
@@ -1053,7 +997,7 @@
     window.__lastShared = { version: pdf.version, name: file.name, size: file.size };       // for tests: what was handed to the share sheet
     try { if (navigator.canShare && !navigator.canShare(data)) data = { files: [file] }; sharing = true; p = navigator.share(data); }
     catch (err) { sharing = false; shareFailed = true; updateSend(); return; }
-    Promise.resolve(p).then(function () { saveHistory(); renderHomeNotes(); toast('أُرسلت القائمة ✓'); }, function (err) {
+    Promise.resolve(p).then(function () { saveHistory(); renderHomeNotes(); if (!pCart.hidden) renderCart(); toast('أُرسلت القائمة ✓'); }, function (err) {
       var nm = err && err.name; if (nm === 'AbortError' || nm === 'InvalidStateError') return; shareFailed = true; updateSend();
     }).then(function () { sharing = false; });
   });
@@ -1061,7 +1005,7 @@
     var res = pdf.result, url = URL.createObjectURL(res.blob), a = document.createElement('a');
     a.href = url; a.download = res.name; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
-    saveHistory(); renderHomeNotes();
+    saveHistory(); renderHomeNotes(); if (!pCart.hidden) renderCart();
     toast('نُزّل الملف: ' + res.name);
   }
   function clearPreview() { pvPages.querySelectorAll('img').forEach(function (im) { URL.revokeObjectURL(im.src); }); pvPages.innerHTML = ''; }
@@ -1118,7 +1062,6 @@
   // ================================================================== other tabs of the same phone
   window.addEventListener('storage', function (e) {
     if (e.key === LS_CART) { var before = Array.from(cart.keys()); if (loadCart()) saveCart(); version++; before.concat(Array.from(cart.keys())).forEach(refreshItem); if (!pCart.hidden) renderCart(); renderHomeNotes(); updateBar(); schedulePdf(); }
-    else if (e.key === LS_STORE) { storeChoice = readJSON(LS_STORE, {}) || {}; version++; if (!pCart.hidden) renderCart(); schedulePdf(); }
   });
 
   // ================================================================== the shared list as a link: a checklist for whoever does the shopping
@@ -1142,12 +1085,11 @@
     });
     return lines.length ? { t: parseInt(m[1], 36), lines: lines, key: m[1] + '.' + lines.length } : null;
   }
+  // the message sent with the file: counts and the checklist link only (stores and prices are inside the PDF)
   function shareText(P) {
-    var n = P.L.length + P.T.length + P.U.length + P.R.length, rows = ['قائمة المشتريات — ' + nItems(n)];
-    if (P.L.length) rows.push('لولو: ' + nItems(P.L.length) + (P.total.L ? '، ' + money(P.total.L) + (P.missing.L ? ' ' + coverage(P.L.length, P.missing.L) : '') : ''));
-    if (P.T.length) rows.push('طلبات مارت: ' + nItems(P.T.length) + (P.total.T ? '، ' + money(P.total.T) + (P.missing.T ? ' ' + coverage(P.T.length, P.missing.T) : '') : ''));
-    if (P.U.length) rows.push('بحاجة إلى تحديد المتجر: ' + nItems(P.U.length));
-    if (P.R.length) rows.push('تحتاج مراجعة: ' + nItems(P.R.length));
+    var n = P.L.length + P.T.length + P.U.length + P.R.length, pieces = 0;
+    [P.L, P.T, P.U, P.R].forEach(function (ls) { ls.forEach(function (x) { pieces += x.q; }); });
+    var rows = ['قائمة المشتريات — ' + nItems(n) + '، ' + nPieces(pieces)];
     var url = listUrl(P);
     if (url) rows.push('للتأشير على المشتريات أثناء التسوق: ' + url);
     return rows.join('\n');
@@ -1182,39 +1124,30 @@
   function renderShop() {
     if (!shopList) return;
     shopBody.innerHTML = '';
-    var groups = { L: [], T: [], U: [], R: [] }, unknown = 0;
-    shopList.lines.forEach(function (l) { var it = byId.get(l.id); if (!it) { unknown++; return; } groups[l.s].push({ it: it, q: l.q }); });
-    var titles = { L: STORES.L, T: STORES.T, U: 'بحاجة إلى تحديد المتجر', R: 'تحتاج مراجعة' };
-    var frag = document.createDocumentFragment();
-    ['L', 'T', 'U', 'R'].forEach(function (s) {
-      var lines = groups[s]; if (!lines.length) return;
-      lines.sort(function (a, b) { return a.it.cat - b.it.cat || (a.it.i || 0) - (b.it.i || 0); });
-      var total = 0, missing = 0;
-      if (s === 'L' || s === 'T') lines.forEach(function (x) { var p = offer(x.it, s); if (p > 0) total += p * x.q; else missing++; });
-      var head = document.createElement('div'); head.className = 'store-h ' + s;
-      head.innerHTML = '<h3></h3><small></small>';
-      head.firstChild.textContent = titles[s];
-      head.lastChild.textContent = nItems(lines.length) + (total ? '، ' + money(total) + (missing ? ' ' + coverage(lines.length, missing) : '') : '');
-      frag.appendChild(head);
-      var lastCat = null;
-      lines.forEach(function (x) {
-        if (x.it.cat !== lastCat) { lastCat = x.it.cat; var h = document.createElement('p'); h.className = 'cat-h'; h.textContent = CATS[lastCat] || ''; frag.appendChild(h); }
-        var ss = splitSize(x.it), row = document.createElement('div');
-        row.className = 'srow' + (ticks.has(x.it.id) ? ' done' : ''); row.dataset.sid = x.it.id; row.setAttribute('role', 'checkbox');
-        row.setAttribute('aria-checked', ticks.has(x.it.id) ? 'true' : 'false'); row.tabIndex = 0;
-        row.innerHTML = '<span class="tick" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6 11-11-1.4-1.4-9.6 9.6Z"/></svg></span>' +
-          '<span class="pic"><img alt="" loading="lazy" decoding="async"></span><div class="s-info"><p class="s-name"></p><p class="s-size"></p></div><b class="s-qty"></b>';
-        row.querySelector('img').src = thumbUrl(x.it);
-        row.querySelector('.s-name').textContent = arText(ss.base);
-        row.querySelector('.s-size').textContent = arText(ss.size);
-        row.querySelector('.s-qty').textContent = '×' + ar(x.q);
-        row.setAttribute('aria-label', label(x.it) + '، الكمية ' + ar(x.q));
-        frag.appendChild(row);
-      });
+    // one list in the order of the home's sections; no store and no price on this page (they are in the PDF)
+    var lines = [], unknown = 0;
+    shopList.lines.forEach(function (l) { var it = byId.get(l.id); if (!it) { unknown++; return; } lines.push({ it: it, q: l.q, review: l.s === 'R' }); });
+    lines.sort(lineOrder);
+    var frag = document.createDocumentFragment(), last = null;
+    lines.forEach(function (x) {
+      var k = headRank(x.it);
+      if (k !== last) { last = k; var h = document.createElement('p'); h.className = 'cat-h'; h.textContent = headName(x.it); frag.appendChild(h); }
+      var ss = splitSize(x.it), row = document.createElement('div');
+      row.className = 'srow' + (ticks.has(x.it.id) ? ' done' : ''); row.dataset.sid = x.it.id; row.setAttribute('role', 'checkbox');
+      row.setAttribute('aria-checked', ticks.has(x.it.id) ? 'true' : 'false'); row.tabIndex = 0;
+      row.innerHTML = '<span class="tick" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6 11-11-1.4-1.4-9.6 9.6Z"/></svg></span>' +
+        '<span class="pic"><img alt="" loading="lazy" decoding="async"></span><div class="s-info"><p class="s-name"></p><p class="s-size"></p></div><b class="s-qty"></b>';
+      row.querySelector('img').src = thumbUrl(x.it);
+      row.querySelector('.s-name').textContent = arText(ss.base);
+      row.querySelector('.s-size').textContent = arText(ss.size);
+      if (x.review) { var w = document.createElement('p'); w.className = 's-warn'; w.textContent = 'غير متوفر حاليًا'; row.querySelector('.s-info').appendChild(w); }
+      row.querySelector('.s-qty').textContent = '×' + ar(x.q);
+      row.setAttribute('aria-label', label(x.it) + '، الكمية ' + ar(x.q));
+      frag.appendChild(row);
     });
     if (unknown) { var p = document.createElement('p'); p.className = 'note'; p.textContent = countOf(unknown, 'صنف واحد', 'صنفان', 'أصناف', 'صنفًا') + ' من القائمة لم يعد في الكتالوج.'; frag.appendChild(p); }
     var note = document.createElement('p'); note.className = 'note';
-    note.textContent = 'اضغط على الصنف بعد شرائه. التأشيرات تُحفظ على هذا الهاتف.' + (PRICE_DATE ? ' الأسعار بحسب آخر تحديث: ' + priceDateText(true) + '.' : '');
+    note.textContent = 'اضغط على الصنف بعد شرائه. التأشيرات تُحفظ على هذا الهاتف.';
     frag.appendChild(note);
     shopBody.appendChild(frag);
     shopProgress();
@@ -1294,8 +1227,13 @@
       return { L: P.L.map(f), T: P.T.map(f), U: P.U.map(f), R: P.R.map(f), total: P.total, missing: P.missing, priced: P.priced, lines: P.lines }; },
     pdf: function () { return pdf.result; }, pdfDoc: pdfDoc, setQty: setQty,
     openGroup: function (name) { for (var i = 0; i < GROUPS.length; i++) if (GROUPS[i][0] === name) { openType(i); return i; } return -1; },
-    openSection: function (name) { var i = CATS.indexOf(name); if (i >= 0) openSection(i); return i; },
-    item: function (id) { return byId.get(id); }, items: function () { return ITEMS.length; }, groups: function () { return GROUPS.length; },
+    openSection: function (name) {          // a home section by name (or the first section of a group)
+      var hi = -1; HEADS.forEach(function (h, i) { if (hi < 0 && h[1] === name && secProducts(i)) hi = i; });
+      if (hi < 0) { var ci = CATS.indexOf(name); if (ci >= 0) hi = deptHeads(ci).filter(function (i) { return secProducts(i); })[0]; }
+      if (hi >= 0 && hi != null) openSection(hi); return hi == null ? -1 : hi;
+    },
+    sections: function () { return HEADS.map(function (h, i) { return { hi: i, dept: CATS[h[0]], name: h[1], n: secProducts(i), kinds: secKinds(i).length }; }).filter(function (s) { return s.n; }); },
+    item: function (id) { return byId.get(id); }, label: function (id) { var it = byId.get(id); return it ? label(it) : ''; }, items: function () { return ITEMS.length; }, groups: function () { return GROUPS.length; },
     find: function (pred) { return ITEMS.filter(pred).slice(0, 50).map(function (it) { return { id: it.id, name: it.name, off: it.off, cat: it.cat, u: it.u }; }); },
     listUrl: function () { return listUrl(plan()); }, shareText: function () { return shareText(plan()); }, openList: function (h) { var l = parseList(h); if (l) openShop(l); return !!l; },
     history: history_, saveHistory: saveHistory,
