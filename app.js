@@ -1,6 +1,6 @@
-/* قائمة الجمعية — a phone grocery store: every section from the first screen (data/home-sections.json), shelves of kinds
-   with the home's usual packs first («معتاد»), big product cards with + on each, and a basket that only shows what was
-   chosen and how many. Where each item is bought (produce from talabat mart, everything else at the cheaper store for the
+/* قائمة الجمعية — a phone grocery store browsed as one grid of tiles all the way down: the sections (data/home-sections.json)
+   → the kinds of a section → the packs of a kind (each with + and the quantity), the home's usual first («معتاد»), and a
+   basket that only shows what was chosen and how many. Where each item is bought (produce from talabat mart, everything else at the cheaper store for the
    same pack) and the prices are decided here but shown only inside the PDF that is sent. */
 (function () {
   'use strict';
@@ -140,7 +140,7 @@
   function isUsual(it) { return uscore(it) > 0; }
 
   // ================================================================== name parts: the pack size on its own line
-  var UNIT = 'كجم|كغ|غم|غ|جم|ملغ|مل|لتر|قطعة|قطع|حبة|حبات|رول|رولات|كيس|أكياس|منديل|مناديل|فوطة|فوط|ظرف|ظروف|كبسولة|كبسولات|شريحة|شرائح|ورقة|عبوة|عبوات|علبة|علب|قرص|أقراص|جالون|متر|م|سم|بيضة|بيضات|لوح|أصابع|إصبع|أونصة|قدم مربع';
+  var UNIT = 'كجم|كغ|غم|غ|جم|ملغ|مل|لتر|قطعة|قطع|حبة|حبات|رول|رولات|كيس|أكياس|منديل|مناديل|فوطة|فوط|ظرف|ظروف|كبسولة|كبسولات|شريحة|شرائح|ورقة|عبوة|عبوات|علبة|علب|قرص|أقراص|جالون|متر|م|سم|بيضة|بيضات|لوح|أصابع|إصبع|أونصة|قدم مربع|قفاز|قفازات|زوج|أزواج|شفرة|شفرات|أظرف|سنتيلتر|عود|أعواد|إنش|طقم|أطقم|غسلة|غسلات|مم|ياردة|باكيت|كوب|أكواب|حزمة|أرغفة|لفائف|مكعبات|ملعقة|أصبع|غيار|واط';
   var SIZE_RE = new RegExp('(?:\\d+(?:[.,]\\d+)?\\s*[×x]\\s*)?\\d+(?:[.,]\\d+)?\\s*(?:' + UNIT + ')(?![\\u0621-\\u064A])');
   var FIT_RE = /مقاس\s*(\d+\s*\+?|[A-Za-z]{1,4}\b)/, STAGE_RE = /(?:المرحلة|مرحلة|رقم)\s*(\d+\s*\+?)/;
   var SIZE_TAIL_RE = new RegExp('^(?:[\\s\\d.,×x+\\-–()]|' + UNIT + ')*$');
@@ -310,7 +310,7 @@
   // ================================================================== elements
   var topEl = $('#top'), qInput = $('#q'), qClear = $('#qClear'), homeEl = $('#home'), resultsEl = $('#results'), deptBar = $('#deptBar');
   var barEl = $('#bar'), cartBtn = $('#cartBtn'), cbCount = $('#cbCount'), cbTitle = $('#cbTitle'), cbSub = $('#cbSub');
-  var pSec = $('#pSec'), secTitle = $('#secTitle'), secSub = $('#secSub'), secHeads = $('#secHeads'), secBody = $('#secBody'), secSwitch = $('#secSwitch');
+  var pSec = $('#pSec'), secTitle = $('#secTitle'), secSub = $('#secSub'), secBody = $('#secBody'), secSwitch = $('#secSwitch');
   var pType = $('#pType'), typeTitle = $('#typeTitle'), typeSub = $('#typeSub'), typeTools = $('#typeTools'), typeBody = $('#typeBody');
   var pCart = $('#pCart'), cartSub = $('#cartSub'), cartBody = $('#cartBody'), clearBtn = $('#clearBtn');
   var sendBtn = $('#sendBtn'), sendLabel = $('#sendLabel'), sendNote = $('#sendNote'), previewBtn = $('#previewBtn');
@@ -321,40 +321,44 @@
   var toastEl = $('#toast');
 
   // ================================================================== + and the quantity
-  function ctrlHTML(q, wide) {
-    if (!q) return '<button type="button" class="add" data-act="add" aria-label="إضافة إلى السلة">' + PLUS + (wide ? '<span>أضيفي إلى السلة</span>' : '') + '</button>';
+  // mode: 'sheet' (the product sheet: «أضيفي إلى السلة»), 'tile' (a pack tile: «أضيفي»), none (a basket row)
+  function ctrlHTML(q, mode) {
+    if (!q) return '<button type="button" class="add" data-act="add" aria-label="إضافة إلى السلة">' + PLUS + (mode === 'sheet' ? '<span>أضيفي إلى السلة</span>' : mode === 'tile' ? '<span>أضيفي</span>' : '') + '</button>';
     return '<div class="stepper" role="group" aria-label="الكمية"><button type="button" data-act="inc" aria-label="زيادة الكمية">+</button>' +
       '<output aria-live="polite">' + ar(q) + '</output><button type="button" data-act="dec" aria-label="' + (q === 1 ? 'إزالة من السلة' : 'إنقاص الكمية') + '">' + (q === 1 ? TRASH : '−') + '</button></div>';
   }
-  function updateCtrl(box, q) {
+  function updateCtrl(box, q, it) {
     if (!box) return;
     var st = box.querySelector('.stepper');
     if (q && st) {
       st.querySelector('output').textContent = ar(q);
       var dec = st.querySelector('[data-act="dec"]'), wantTrash = q === 1, isTrash = !!dec.querySelector('svg');
       if (wantTrash !== isTrash) { dec.innerHTML = wantTrash ? TRASH : '−'; dec.setAttribute('aria-label', wantTrash ? 'إزالة من السلة' : 'إنقاص الكمية'); }
-    } else box.innerHTML = ctrlHTML(q, box === itCtrl);
+    } else {
+      box.innerHTML = ctrlHTML(q, box === itCtrl ? 'sheet' : 'tile');
+      if (!q && it && box !== itCtrl) box.querySelector('button').setAttribute('aria-label', 'إضافة ' + label(it) + ' إلى السلة');
+    }
   }
-  // product card: big photo (with «معتاد» and +), then the name and the pack size
+  // a pack, as a tile like the home's sections: small photo in the middle (and «معتاد»), the whole name under it,
+  // the pack size on its own line (what tells two packs apart), then + / the quantity at the bottom
   function card(it) {
     var el = document.createElement('article');
     el.className = 'card'; el.dataset.id = it.id;
     var ss = splitSize(it), q = cart.get(it.id) || 0;
-    el.innerHTML = '<div class="c-img"><button class="pic" type="button"><img alt="" loading="lazy" decoding="async"></button>' +
-      (isUsual(it) ? '<span class="badge-usual">معتاد</span>' : '') + '<div class="c-ctrl"></div></div>' +
-      '<div class="c-text"><p class="c-name"></p><p class="c-size"></p></div>';
-    var img = el.querySelector('img'); img.src = thumbUrl(it);
+    el.innerHTML = (isUsual(it) ? '<span class="badge-usual">معتاد</span>' : '') +
+      '<button class="pic" type="button"><img alt="" loading="lazy" decoding="async"></button>' +
+      '<p class="c-name"></p><p class="c-size"></p><div class="c-ctrl"></div>';
+    el.querySelector('img').src = thumbUrl(it);
     el.querySelector('.pic').setAttribute('aria-label', 'تفاصيل ' + label(it));
     el.querySelector('.c-name').textContent = arText(ss.base);
     el.querySelector('.c-size').textContent = arText(ss.size);
     el.classList.toggle('on', q > 0);
-    var c = el.querySelector('.c-ctrl'); c.innerHTML = ctrlHTML(q);
-    if (!q) c.querySelector('button').setAttribute('aria-label', 'إضافة ' + label(it) + ' إلى السلة');
+    updateCtrl(el.querySelector('.c-ctrl'), q, it);
     return el;
   }
   function refreshItem(id) {
-    var q = cart.get(id) || 0;
-    document.querySelectorAll('.card[data-id="' + cssId(id) + '"]').forEach(function (el) { el.classList.toggle('on', q > 0); updateCtrl(el.querySelector('.c-ctrl'), q); });
+    var q = cart.get(id) || 0, it = byId.get(id);
+    document.querySelectorAll('.card[data-id="' + cssId(id) + '"]').forEach(function (el) { el.classList.toggle('on', q > 0); updateCtrl(el.querySelector('.c-ctrl'), q, it); });
     if (itemId === id) updateCtrl(itCtrl, q);
   }
   function sortedItems(gi) {                  // a kind's packs: the home's usual first, then the store's order
@@ -505,85 +509,45 @@
   qInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); qInput.blur(); } });
   qClear.addEventListener('click', function () { qInput.value = ''; renderResults(); qInput.focus(); });
 
-  // ================================================================== a section: its kinds as shelves, the home's usual first
-  var secState = null, secIO = null;
+  // ================================================================== a section: its kinds as tiles (the home's design), the usual first
+  // tap a kind → all its packs as tiles (openType); back returns to the same place, since each page stays open underneath
+  var secState = null;
   function secKinds(hi) { return secGroups(hi).filter(function (gi) { return GROUPS[gi][3] > 0; }); }
   function openSection(hi, keepPage) {
     var h = HEADS[hi]; if (!h) return;
     var kinds = secKinds(hi);
-    if (kinds.length === 1) { openType(kinds[0], null, hi); return; }      // one kind: straight to all its packs, with filters
-    secState = { hi: hi, blocks: [], done: 0 };
+    if (kinds.length === 1) { openType(kinds[0], null, hi); return; }      // one kind: straight to its packs
+    secState = { hi: hi };
     secTitle.textContent = h[1];
     secSub.textContent = (CATS[h[0]] || '') + '، ' + nProducts(secProducts(hi));
-    // the kinds of this section: each chip opens all its packs, with filters
-    secHeads.innerHTML = '';
-    kinds.forEach(function (gi) {
-      var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.dataset.g = gi;
-      b.innerHTML = '<span></span><small></small>';
-      b.firstChild.textContent = arText(GROUPS[gi][0]); b.lastChild.textContent = ar(GROUPS[gi][3]);
-      b.setAttribute('aria-label', 'كل ' + GROUPS[gi][0] + '، ' + nProducts(GROUPS[gi][3]));
-      secHeads.appendChild(b);
-    });
-    secHeads.hidden = kinds.length < 2;
-    secBody.innerHTML = '<p class="loading">جارٍ تحميل المنتجات…</p>';
+    secBody.innerHTML = '<p class="loading">جارٍ تحميل المنتجات…</p>'; secBody.scrollTop = 0;
     if (!keepPage) openPage(pSec);
     afterItems(function () { if (secState && secState.hi === hi) buildSection(); });
   }
   function kindInfo(gi) {
-    var items = sortedItems(gi), score = 0;
-    items.forEach(function (it) { var s = uscore(it); if (s > score) score = s; });
-    return { gi: gi, items: items, score: score };
+    var items = sortedItems(gi), score = 0, usual = 0;
+    items.forEach(function (it) { var s = uscore(it); if (s > 0) { score += s; usual++; } });
+    return { gi: gi, items: items, score: score, usual: usual };
   }
   function buildSection() {
     var st = secState, kinds = secKinds(st.hi).map(kindInfo).filter(function (k) { return k.items.length; });
-    var blocks = [], total = kinds.reduce(function (a, k) { return a + k.items.length; }, 0);
-    if (total <= 40 || kinds.length < 2) {           // a small section reads best as one grid, the usual first
-      var all = []; kinds.forEach(function (k) { all = all.concat(k.items); });
-      all.sort(function (a, b) { return uscore(b) - uscore(a) || a.i - b.i; });
-      blocks.push({ grid: all });
-    } else {                                         // a shelf per kind: the kinds this home buys come first
-      kinds.filter(function (k) { return k.score > 0; }).sort(function (a, b) { return b.score - a.score || a.gi - b.gi; }).forEach(function (k) { blocks.push({ shelf: k }); });
-      kinds.filter(function (k) { return !(k.score > 0); }).forEach(function (k) { blocks.push({ shelf: k }); });
-    }
-    st.blocks = blocks; st.done = 0;
+    kinds.sort(function (a, b) { return b.score - a.score || a.gi - b.gi; });       // what this home buys most, then the store's order
     secBody.innerHTML = ''; secBody.scrollTop = 0;
-    var sentinel = document.createElement('div'); sentinel.className = 'sentinel'; sentinel.style.height = '1px';
-    secBody.appendChild(sentinel);
-    moreBlocks(8);
-    if (secIO) secIO.disconnect();
-    if (window.IntersectionObserver) {
-      secIO = new IntersectionObserver(function (es) { if (es.some(function (e) { return e.isIntersecting; })) moreBlocks(8); }, { root: secBody, rootMargin: '900px 0px' });
-      secIO.observe(sentinel);
-    }
-  }
-  function moreBlocks(n) {
-    var st = secState; if (!st) return;
-    var sentinel = secBody.querySelector('.sentinel'), frag = document.createDocumentFragment();
-    var end = Math.min(st.blocks.length, st.done + n);
-    for (var i = st.done; i < end; i++) frag.appendChild(blockEl(st.blocks[i]));
-    st.done = end;
-    secBody.insertBefore(frag, sentinel);
-    if (!window.IntersectionObserver && st.done < st.blocks.length) setTimeout(function () { moreBlocks(n); }, 50);
-  }
-  function blockEl(b) {
-    if (b.grid) { var g = document.createElement('div'); g.className = 'grid'; b.grid.forEach(function (it) { g.appendChild(card(it)); }); return g; }
-    var k = b.shelf, G = GROUPS[k.gi], sec = document.createElement('section'); sec.className = 'shelf';
-    var head = document.createElement('div'); head.className = 'shelf-h';
-    head.innerHTML = '<h3></h3><small></small>' + (k.score > 0 ? '<span class="usual-mark">معتاد</span>' : '') +
-      (k.items.length > 2 ? '<button type="button" class="all">عرض الكل ‹</button>' : '');
-    head.querySelector('h3').textContent = arText(G[0]);
-    head.querySelector('small').textContent = ar(k.items.length);
-    var all = head.querySelector('.all'); if (all) { all.dataset.g = k.gi; all.setAttribute('aria-label', 'كل ' + G[0] + '، ' + nProducts(k.items.length)); }
-    sec.appendChild(head);
-    var row = document.createElement('div'); row.className = 'shelf-row';
-    k.items.slice(0, 10).forEach(function (it) { row.appendChild(card(it)); });
-    if (k.items.length > 10) {
-      var m = document.createElement('button'); m.type = 'button'; m.className = 'more-card'; m.dataset.g = k.gi;
-      m.innerHTML = '<b>‹</b><span></span>'; m.lastChild.textContent = 'كل الـ' + ar(k.items.length) + ' مع الفرز';
-      row.appendChild(m);
-    }
-    sec.appendChild(row);
-    return sec;
+    var info = document.createElement('p'); info.className = 'count-line';
+    info.textContent = nKinds(kinds.length) + (kinds.some(function (k) { return k.usual; }) ? '، ما تشترونه عادةً في الأول' : '');
+    secBody.appendChild(info);
+    var grid = document.createElement('div'); grid.className = 'sec-grid kinds';
+    kinds.forEach(function (k) {
+      var name = GROUPS[k.gi][0], b = document.createElement('button');
+      b.type = 'button'; b.className = 'sec-tile'; b.dataset.g = k.gi;
+      b.innerHTML = '<span class="st-img"><img alt="" loading="lazy" decoding="async"></span><span class="st-name"></span>' + (k.usual ? '<span class="st-usual"></span>' : '');
+      b.querySelector('img').src = thumbUrl(k.items[0]);                           // the pack bought most, else the first pack
+      b.querySelector('.st-name').textContent = arText(name);
+      if (k.usual) b.querySelector('.st-usual').textContent = ar(k.usual) + ' معتاد';
+      b.setAttribute('aria-label', name + '، ' + nProducts(k.items.length) + (k.usual ? '، منها ' + ar(k.usual) + ' من معتادكم' : ''));
+      grid.appendChild(b);
+    });
+    secBody.appendChild(grid);
   }
   // every section, under its group's name (opened from the title of a section page)
   function openSections() {
@@ -611,7 +575,7 @@
   var STOP = new Set(['من', 'في', 'على', 'او', 'حجم', 'عبوه', 'عبوات', 'قطعه', 'قطع', 'حبه', 'حبات', 'غ', 'غم', 'جم', 'كجم', 'مل', 'لتر', 'كيس', 'اكياس',
     'رول', 'رولات', 'ظرف', 'منديل', 'مناديل', 'فوطه', 'x', 'كبسوله', 'ملغ', 'سم', 'م', 'وزن', 'تقريبا', 'حوالي', 'عرض', 'خاص', 'مجانا', 'جديد', 'علبه',
     'مقاس', 'مرحله', 'المرحله', 'رقم', 'و', 'عدد', 'قطعتين', 'عبوتين', 'حبتين', 'اند', 'ذا', 'دي', 'لا', 'ال', 'بال', 'باكيت', 'باكت']);
-  var WEAK = new Set(['مع', 'بدون', 'قليل', 'خالي', 'خال', 'كامل', 'منزوع', 'نكهه', 'بنكهه', 'طعم', 'بطعم', 'نوع', 'لون', 'عالي', 'منخفض', 'غني', 'اكثر', 'اقل']);
+  var WEAK = new Set(['مع', 'بدون', 'قليل', 'خالي', 'خال', 'كامل', 'منزوع', 'نكهه', 'بنكهه', 'طعم', 'بطعم', 'نوع', 'لون', 'عالي', 'منخفض', 'غني', 'اكثر', 'اقل', 'جدا', 'جديده', 'ممتاز', 'فاخر']);
   var COLORS = { 'احمر': 'أحمر', 'حمراء': 'أحمر', 'ابيض': 'أبيض', 'بيضاء': 'أبيض', 'اسود': 'أسود', 'سوداء': 'أسود', 'اخضر': 'أخضر', 'خضراء': 'أخضر',
     'اصفر': 'أصفر', 'صفراء': 'أصفر', 'بني': 'بني', 'وردي': 'وردي', 'برتقالي': 'برتقالي', 'بنفسجي': 'بنفسجي', 'ذهبي': 'ذهبي' };
   var ORIGINS = ('لبناني مصري اردني سوري يمني كويتي سعودي اماراتي عماني قطري بحريني تركي ايراني هندي باكستاني سريلانكي صيني تايلندي تايلاندي فيتنامي ' +
@@ -651,7 +615,7 @@
   function facetsFor(items, gname) {
     var out = [], n = items.length;
     kindLabels = new Map();
-    if (n < 6) return out;
+    if (n < 10) return out;                      // filters only when there are many packs
     function tally(key) {
       var m = new Map();
       items.forEach(function (it) { var v = facetVals(it)[key]; (Array.isArray(v) ? v : v ? [v] : []).forEach(function (x) { m.set(x, (m.get(x) || 0) + 1); }); });
@@ -764,7 +728,7 @@
       }
       var g = document.createElement('div'); g.className = 'grid'; typeBody.appendChild(g);
     }
-    var host = typeBody.querySelector('.grid'), list = tState.list, end = Math.min(list.length, tState.shown + 40);
+    var host = typeBody.querySelector('.grid'), list = tState.list, end = Math.min(list.length, tState.shown + 60);
     if (tState.focus) { var fi = list.findIndex(function (it) { return it.id === tState.focus; }); if (fi >= end) end = Math.min(list.length, fi + 6); }
     var frag = document.createDocumentFragment();
     for (var i = tState.shown; i < end; i++) frag.appendChild(card(list[i]));
@@ -792,7 +756,7 @@
     itImg.src = medUrl(it); itImg.alt = label(it);
     itBadge.hidden = !isUsual(it);
     itName.textContent = arText(ss.base); itSize.textContent = arText(ss.size);
-    itCtrl.innerHTML = ctrlHTML(cart.get(id) || 0, true);
+    itCtrl.innerHTML = ctrlHTML(cart.get(id) || 0, 'sheet');
     var inType = topPage() === pType && tState && tState.gi === it.g;
     itMore.hidden = !g || g[3] < 2 || inType || it.hid;
     if (!itMore.hidden) { itMore.textContent = 'كل ' + arText(g[0]) + ' (' + ar(g[3]) + ') مع الفرز ‹'; itMore.dataset.gi = it.g; itMore.dataset.focus = id; }
@@ -916,8 +880,9 @@
     cartBtn.setAttribute('aria-label', n ? 'السلة: ' + nItems(n) + '. مراجعة وإرسال' : 'السلة فارغة');
     if (bump) { cartBtn.classList.remove('bump'); void cartBtn.offsetWidth; cartBtn.classList.add('bump'); }
   }
-  function setSizes() {
-    document.documentElement.style.setProperty('--bar-h', barEl.offsetHeight + 'px');
+  function setSizes() {             // the bar's height is kept while it is hidden (a sheet or the basket on top), so the
+    // pages under it keep their bottom space and their scroll position
+    if (barEl.offsetHeight) document.documentElement.style.setProperty('--bar-h', barEl.offsetHeight + 'px');
     document.documentElement.style.setProperty('--top-h', topEl.offsetHeight + 'px');
   }
 
@@ -1044,7 +1009,7 @@
     if (el === previewEl) clearPreview();
     if (el === shopEl) { shopList = null; closeShopLink(); }
     if (el === pType) { tState = null; typeBody.innerHTML = ''; }
-    if (el === pSec) { secState = null; if (secIO) secIO.disconnect(); secBody.innerHTML = ''; }
+    if (el === pSec) { secState = null; secBody.innerHTML = ''; }
     syncBar();
     if (!fromPop) { skipPop++; try { history.back(); } catch (e) { skipPop--; } }
   }
@@ -1232,6 +1197,7 @@
       if (hi < 0) { var ci = CATS.indexOf(name); if (ci >= 0) hi = deptHeads(ci).filter(function (i) { return secProducts(i); })[0]; }
       if (hi >= 0 && hi != null) openSection(hi); return hi == null ? -1 : hi;
     },
+    kind: function (gi) { var g = GROUPS[gi]; return g ? { name: g[0], n: g[3], head: g[1] } : null; },
     sections: function () { return HEADS.map(function (h, i) { return { hi: i, dept: CATS[h[0]], name: h[1], n: secProducts(i), kinds: secKinds(i).length }; }).filter(function (s) { return s.n; }); },
     item: function (id) { return byId.get(id); }, label: function (id) { var it = byId.get(id); return it ? label(it) : ''; }, items: function () { return ITEMS.length; }, groups: function () { return GROUPS.length; },
     find: function (pred) { return ITEMS.filter(pred).slice(0, 50).map(function (it) { return { id: it.id, name: it.name, off: it.off, cat: it.cat, u: it.u }; }); },

@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="قائمة الجمعية">
-<link rel="stylesheet" href="app.css?v=755aea4484">
+<link rel="stylesheet" href="app.css?v=a75cd4c865">
 </head>
 <body>
 <!-- Home: search, then every section of the store -->
@@ -40,7 +40,7 @@
   </button>
 </footer>
 
-<!-- One home section: shelves of its kinds (or one grid when small), the home's usual first -->
+<!-- One home section: its kinds as tiles, the home's usual first (a kind opens all its packs as tiles) -->
 <section id="pSec" class="page" role="dialog" aria-modal="true" aria-labelledby="secTitle" hidden>
   <div class="page-head">
     <button class="back" type="button" data-close aria-label="رجوع"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5 15.6 12l-7 7-1.4-1.4 5.6-5.6-5.6-5.6L8.6 5Z"/></svg></button>
@@ -49,11 +49,10 @@
     </button>
     <button class="icon-btn" type="button" data-act="find" aria-label="بحث"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.06l4.24 4.24-1.4 1.4-4.24-4.24A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg></button>
   </div>
-  <nav id="secHeads" class="chips-row" aria-label="أنواع هذا القسم"></nav>
   <div id="secBody" class="page-body"></div>
 </section>
 
-<!-- Every pack of one kind, with filters and order -->
+<!-- Every pack of one kind as tiles, the usual first, with filters when there are many -->
 <section id="pType" class="page" role="dialog" aria-modal="true" aria-labelledby="typeTitle" hidden>
   <div class="page-head">
     <button class="back" type="button" data-close aria-label="رجوع"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5 15.6 12l-7 7-1.4-1.4 5.6-5.6-5.6-5.6L8.6 5Z"/></svg></button>
@@ -137,6 +136,6 @@
 
 <script src="catalog.js?v=bf2d4bde1e"></script>
 <script src="pdf.js?v=c5ee5f6533"></script>
-<script src="app.js?v=94c3646ec9"></script>
+<script src="app.js?v=b574f2cf80"></script>
 </body>
 </html>
