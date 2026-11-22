@@ -7,7 +7,7 @@
 (function (global) {
   'use strict';
 
-  var PAGE_W = 1080, PAGE_MAX_H = 1920;     // canvas pixels (9:16 at most; the last page is cut to its content)
+  var PAGE_W = 1080, PAGE_MAX_H = 2340;     // canvas pixels: a phone screen (9:19.5), so one page fills the phone; the last page is cut to its content
   var PT_W = 360;                           // PDF page width in points
   var M = 34;                               // side margin
   var FONT = '"SF Arabic", system-ui, -apple-system, "Segoe UI", "Noto Sans Arabic", "Noto Naskh Arabic", Tahoma, "Geeza Pro", Arial, sans-serif';
@@ -16,7 +16,8 @@
   var SOFT = { L: '#E2EDFA', T: '#FDEBDD', U: '#ECEFF1', R: '#FBE7DC' };
   var AR = '٠١٢٣٤٥٦٧٨٩';
   // sizes of the pieces (px)
-  var H_LINK = 70, H_FIRST = 176, H_NEXT = 78, H_STORE = 92, H_CONT = 64, H_SEC = 58, H_ROW = 128, H_NOTE = 46, GAP_STORE = 22, FOOT = 54;
+  var SLACK = 440;                          // the last page may run this much longer instead of starting a near-empty page
+  var H_LINK = 70, H_FIRST = 150, H_NEXT = 72, H_STORE = 82, H_CONT = 56, H_SEC = 46, H_ROW = 108, H_NOTE = 42, GAP_STORE = 16, FOOT = 48;
 
   function ar(n) { return String(n).replace(/[0-9]/g, function (d) { return AR[+d]; }); }
   function arText(s) {
@@ -78,11 +79,11 @@
   // first page: title, date, what is in the list, the price date (once)
   function drawFirstHeader(ctx, meta) {
     ctx.direction = 'rtl'; ctx.textAlign = 'right'; ctx.fillStyle = INK;
-    ctx.font = font(800, 54); ctx.fillText('قائمة المشتريات', PAGE_W - M, 70);
-    ctx.font = font(500, 29); ctx.fillStyle = MUTED; ctx.fillText(meta.dateText, PAGE_W - M, 112);
+    ctx.font = font(800, 50); ctx.fillText('قائمة المشتريات', PAGE_W - M, 62);
+    ctx.font = font(500, 28); ctx.fillStyle = MUTED; ctx.fillText(meta.dateText, PAGE_W - M, 102);
     ctx.textAlign = 'left'; ctx.fillStyle = INK2; ctx.font = font(700, 30);
-    ctx.fillText(meta.summary, M, 70);
-    if (meta.priceNote) { ctx.textAlign = 'right'; ctx.fillStyle = MUTED; ctx.font = font(500, 25); ctx.fillText(meta.priceNote, PAGE_W - M, 152); }
+    ctx.fillText(meta.summary, M, 62);
+    if (meta.priceNote) { ctx.textAlign = 'right'; ctx.fillStyle = MUTED; ctx.font = font(500, 24); ctx.fillText(meta.priceNote, PAGE_W - M, 136); }
     var bottom = H_FIRST;
     if (meta.link) {             // a full-width tappable bar: the PDF carries a link that opens the list as a checklist
       var lx = M, ly = H_FIRST - 4, lw = PAGE_W - 2 * M, lh = H_LINK - 14;
@@ -106,11 +107,12 @@
   }
   function drawStore(ctx, y, s) {
     ctx.fillStyle = COLORS[s.code] || INK2; rr(ctx, M, y, PAGE_W - 2 * M, H_STORE - 12, 20); ctx.fill();
-    ctx.direction = 'rtl'; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'right'; ctx.font = font(800, 42);
-    ctx.fillText(s.name, PAGE_W - M - 28, y + 54);
-    ctx.textAlign = 'left'; ctx.font = font(700, 29);
-    var right = s.countText + (s.total ? ' · ' + money(s.total) : '');
-    ctx.fillText(right, M + 26, y + 52);
+    ctx.direction = 'rtl'; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'right'; ctx.font = font(800, 40);
+    ctx.fillText(s.name, PAGE_W - M - 28, y + 50);
+    ctx.textAlign = 'left'; ctx.font = font(700, 28);
+    // the amount says exactly which items it covers
+    var right = s.countText + (s.total ? '، ' + money(s.total) + (s.missing ? ' لـ ' + ar(s.count - s.missing) + ' منها' : '') : (s.code === 'L' || s.code === 'T' ? '، بلا سعر معروف' : ''));
+    ctx.fillText(right, M + 26, y + 48);
     return y + H_STORE;
   }
   function drawCont(ctx, y, s, sec) {         // a store (and section) that continues from the previous page
@@ -126,37 +128,37 @@
     return y + H_NOTE;
   }
   function drawSection(ctx, y, name, code) {
-    ctx.direction = 'rtl'; ctx.textAlign = 'right'; ctx.fillStyle = COLORS[code] || INK; ctx.font = font(800, 33);
+    ctx.direction = 'rtl'; ctx.textAlign = 'right'; ctx.fillStyle = COLORS[code] || INK; ctx.font = font(800, 30);
     var w = ctx.measureText(name).width;
-    ctx.fillText(name, PAGE_W - M - 6, y + 40);
-    ctx.fillStyle = LINE; ctx.fillRect(M, y + 29, PAGE_W - 2 * M - w - 26, 3);
+    ctx.fillText(name, PAGE_W - M - 6, y + 35);
+    ctx.fillStyle = LINE; ctx.fillRect(M, y + 25, PAGE_W - 2 * M - w - 26, 3);
     return y + H_SEC;
   }
   function drawRow(ctx, y, e, last) {
     ctx.direction = 'rtl';
-    var S = 106, ix = PAGE_W - M - S, iy = y + (H_ROW - S) / 2;
+    var S = 90, ix = PAGE_W - M - S, iy = y + (H_ROW - S) / 2;
     ctx.save(); rr(ctx, ix, iy, S, S, 14); ctx.clip();
     ctx.fillStyle = '#F2F2F2'; ctx.fillRect(ix, iy, S, S);
     if (e.img) ctx.drawImage(e.img, ix, iy, S, S);
     ctx.restore();
     ctx.lineWidth = 2; ctx.strokeStyle = LINE; rr(ctx, ix, iy, S, S, 14); ctx.stroke();
     // quantity box on the left: the number to buy, large
-    var qW = 168, qX = M, qY = y + 14, qH = H_ROW - 28;
+    var qW = 146, qX = M, qY = y + 11, qH = H_ROW - 22;
     ctx.fillStyle = '#FFFFFF'; rr(ctx, qX, qY, qW, qH, 16); ctx.fill();
     ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.stroke();
-    ctx.textAlign = 'center'; ctx.fillStyle = MUTED; ctx.font = font(700, 23); ctx.fillText('المطلوب', qX + qW / 2, qY + 30);
-    ctx.fillStyle = INK; ctx.font = font(800, 50); ctx.fillText(ar(e.qty), qX + qW / 2, qY + qH - 14);
+    ctx.textAlign = 'center'; ctx.fillStyle = MUTED; ctx.font = font(700, 22); ctx.fillText('المطلوب', qX + qW / 2, qY + 28);
+    ctx.fillStyle = INK; ctx.font = font(800, 48); ctx.fillText(ar(e.qty), qX + qW / 2, qY + qH - 12);
     // name (one line large, or two smaller lines), then the pack size and the price on one line
     var tRight = ix - 22, tLeft = qX + qW + 22, tW = tRight - tLeft, name = glue(arText(e.name));
     var nm = null, k;
     for (k = 0; k < 3 && !nm; k++) { ctx.font = font(700, [34, 32, 30][k]); var one = wrap(ctx, name, tW, 1); if (one) nm = { size: [34, 32, 30][k], lines: one }; }
     if (!nm) nm = fitText(ctx, name, tW, 2, [30, 28, 26], 700);
     var two = nm.lines.length > 1, lineH = Math.round(nm.size * 1.2);
-    var ty = y + (two ? 14 : 22) + nm.size;
+    var ty = y + (two ? 10 : 18) + nm.size;
     ctx.textAlign = 'right'; ctx.fillStyle = INK; ctx.font = font(700, nm.size);
     for (var i = 0; i < nm.lines.length; i++) ctx.fillText(nm.lines[i], tRight, ty + i * lineH);
-    var sy = two ? y + H_ROW - 14 : ty + 44;
-    var ptxt = e.unit ? (e.qty > 1 ? money(e.unit) + ' × ' + ar(e.qty) + ' = ' + money(e.total) : money(e.unit)) : '';
+    var sy = two ? y + H_ROW - 12 : ty + 42;
+    var ptxt = e.unit ? (e.qty > 1 ? money(e.unit) + ' × ' + ar(e.qty) + ' = ' + money(e.total) : money(e.unit)) : (e.hint || '');
     ctx.font = font(600, 25); var pw = ptxt ? ctx.measureText(ptxt).width + 18 : 0;
     if (e.size) {
       var st = arText(e.size), fs2 = 31;
@@ -181,6 +183,9 @@
         sec.items.forEach(function (e, i) { blocks.push({ t: 'row', s: s, sec: sec, e: e, h: H_ROW, last: i === sec.items.length - 1 }); });
       });
     });
+    // what is left from each block to the end: when the rest fits in a slightly longer last page, it stays on this page
+    var rest = new Array(blocks.length + 1); rest[blocks.length] = 0;
+    for (var r = blocks.length - 1; r >= 0; r--) rest[r] = rest[r + 1] + blocks[r].h;
     var pages = [], cur = null, y = 0;
     function newPage(first) { cur = { first: first, items: [], h: 0 }; pages.push(cur); y = first ? H_FIRST + (doc.link ? H_LINK : 0) + 10 : H_NEXT + 6; }
     newPage(true);
@@ -189,7 +194,7 @@
       // keep a heading with what follows it (store band + note + section heading + the first row)
       var need = b.h, j = i;
       while (blocks[j] && blocks[j].t !== 'row' && blocks[j + 1]) { j++; need += blocks[j].h; }
-      if (y + need > PAGE_MAX_H - FOOT) {
+      if (y + need > PAGE_MAX_H - FOOT && !(y + rest[i] <= PAGE_MAX_H + SLACK - FOOT)) {
         newPage(false);
         if (b.t === 'row' || b.t === 'sec') { cur.items.push({ t: 'cont', s: b.s, sec: b.t === 'row' ? b.sec.name : '', y: y }); y += H_CONT; }
       }
@@ -275,12 +280,13 @@
     opts = opts || {};
     var when = opts.date || new Date(), isCancelled = opts.isCancelled || function () { return false; };
     var blocks = (doc.stores || []).concat(doc.extra || []).map(function (s) {
-      return { code: s.code, name: s.name, total: s.total || 0, note: s.note || '', countText: countItems(s.count || s.sections.reduce(function (a, x) { return a + x.items.length; }, 0)), sections: s.sections };
+      var count = s.count || s.sections.reduce(function (a, x) { return a + x.items.length; }, 0);
+      return { code: s.code, name: s.name, total: s.total || 0, missing: s.missing || 0, count: count, note: s.note || '', countText: countItems(count), sections: s.sections };
     });
     var all = []; blocks.forEach(function (s) { s.sections.forEach(function (sec) { sec.items.forEach(function (e) { all.push(e); }); }); });
     var stores = (doc.stores || []).length;
     var meta = { dateText: dateText(when), priceNote: doc.priceNote || '', link: doc.link || '',
-      summary: countItems(all.length) + (stores === 2 ? ' · متجران' : stores === 1 ? ' · ' + doc.stores[0].name : '') };
+      summary: countItems(all.length) + (stores === 2 ? '، متجران' : stores === 1 ? '، ' + doc.stores[0].name : '') };
     var plan = layout({ blocks: blocks, link: meta.link });
     var pageCount = plan.length;
     var canvas = document.createElement('canvas'); canvas.width = PAGE_W; canvas.height = PAGE_MAX_H;
@@ -294,7 +300,7 @@
         plan.forEach(function (pg, p) {
           chain = chain.then(function () {
             if (isCancelled()) throw new Error('cancelled');
-            var h = p === pageCount - 1 ? Math.min(PAGE_MAX_H, pg.h + (pageCount > 1 ? FOOT + 10 : 30)) : PAGE_MAX_H;
+            var h = p === pageCount - 1 ? Math.min(PAGE_MAX_H + SLACK, pg.h + (pageCount > 1 ? FOOT + 10 : 30)) : PAGE_MAX_H;
             if (canvas.height !== h) canvas.height = h;
             ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, PAGE_W, h);
             if (pg.first) drawFirstHeader(ctx, meta); else drawNextHeader(ctx, p, pageCount);

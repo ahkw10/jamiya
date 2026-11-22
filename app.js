@@ -1,5 +1,6 @@
-/* قائمة الجمعية — the home's usual products with a + on each, search for anything else, and one button that sends the list
-   (a PDF split by store: produce from talabat mart, everything else at the cheaper store). */
+/* قائمة الجمعية — a phone grocery store: every section from the first screen, shelves of kinds with the home's usual packs
+   first («معتاد»), big product cards with + on each, and a basket split by store (produce from talabat mart, everything
+   else at the cheaper store for the same pack) whose totals say exactly which items they cover. */
 (function () {
   'use strict';
 
@@ -24,8 +25,8 @@
     it._ss = null; it._tok = null; it._fv = null; it._w = null;
     return it;
   }
-  GROUPS.forEach(function (g) { if (g[6]) addRow(g[6], null); });     // single-pack types ship their pack in the core file
-  (CORE.usual || []).forEach(function (r) { addRow(r, null); });      // the home's usual products: shown before the full list arrives
+  GROUPS.forEach(function (g) { if (g[6]) addRow(g[6], null); });     // single-pack kinds ship their pack in the core file
+  (CORE.usual || []).forEach(function (r) { addRow(r, null); });      // the home's usual products, before the full list arrives
 
   function loadItems() {
     if (itemsLoaded || loadItems.started) return;
@@ -56,20 +57,24 @@
   var PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4.5h2V11h6.5v2H13v6.5h-2V13H4.5v-2H11V4.5Z"/></svg>';
   function $(sel) { return document.querySelector(sel); }
   function ar(n) { return String(n).replace(/[0-9]/g, function (d) { return AR[+d]; }); }
-  // Arabic-Indic digits in names and sizes (not inside Latin words such as SPF50); «1.5» -> «١٫٥»
-  function arText(s) {
+  function arNum(n) { return ar(Number(n).toLocaleString('en-US')).replace(/,/g, '٬'); }
+  function arText(s) {   // Arabic-Indic digits in names and sizes (not inside Latin words such as SPF50); «1.5» -> «١٫٥»
     return String(s).replace(/(^|[^A-Za-z0-9])(\d+(?:[.,]\d+)?)(?![A-Za-z0-9])/g, function (m, pre, num) {
       return pre + num.replace(/[.,]/, '٫').replace(/[0-9]/g, function (d) { return AR[+d]; });
     });
   }
   function money(fils) { return ar((fils / 1000).toFixed(3)).replace('.', '٫') + ' د.ك'; }
+  function num3(fils) { return ar((fils / 1000).toFixed(3)).replace('.', '٫'); }
   function cssId(id) { return window.CSS && CSS.escape ? CSS.escape(id) : String(id).replace(/["\\]/g, '\\$&'); }
   function thumbUrl(it) { return it.v ? 'img/t/' + encodeURIComponent(it.id) + '.jpg?v=' + it.v : 'img/s/' + encodeURIComponent(it.id) + '.jpg?v=' + SV; }
   function medUrl(it) { return it.v ? 'img/m/' + encodeURIComponent(it.id) + '.jpg?v=' + it.v : 'img/s/' + encodeURIComponent(it.id) + '.jpg?v=' + SV; }
-  function countOf(n, one, two, few, many) { return n === 1 ? one : n === 2 ? two : n <= 10 ? ar(n) + ' ' + few : ar(n) + ' ' + many; }
+  function countOf(n, one, two, few, many) { return n === 1 ? one : n === 2 ? two : n <= 10 ? ar(n) + ' ' + few : arNum(n) + ' ' + many; }
   function nItems(n) { return countOf(n, 'صنف واحد', 'صنفان', 'أصناف', 'صنفًا'); }
   function nProducts(n) { return countOf(n, 'منتج واحد', 'منتجان', 'منتجات', 'منتجًا'); }
+  function nKinds(n) { return countOf(n, 'نوع واحد', 'نوعان', 'أنواع', 'نوعًا'); }
   function nPieces(n) { return countOf(n, 'قطعة واحدة', 'قطعتان', 'قطع', 'قطعة'); }
+  function nItemsAcc(n) { return countOf(n, 'صنفًا واحدًا', 'صنفين', 'أصناف', 'صنفًا'); }
+  function noPricePhrase(n) { return n === 1 ? 'صنف واحد سعره غير متاح' : n === 2 ? 'صنفان سعرهما غير متاح' : nItems(n) + ' سعرها غير متاح'; }
   function priceDateText(withTime) {
     if (!PRICE_DATE) return '';
     try {
@@ -78,9 +83,7 @@
       return withTime ? day + '، ' + new Intl.DateTimeFormat('ar-KW-u-nu-arab', { hour: 'numeric', minute: '2-digit' }).format(d) : day;
     } catch (e) { return PRICE_DATE.slice(0, 10); }
   }
-  function dayText(t) {
-    try { return new Intl.DateTimeFormat('ar-KW-u-nu-arab', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(t)); } catch (e) { return ''; }
-  }
+  function dayText(t) { try { return new Intl.DateTimeFormat('ar-KW-u-nu-arab', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(t)); } catch (e) { return ''; } }
 
   // ================================================================== storage (never throws)
   function readJSON(key, def) { try { var raw = localStorage.getItem(key); if (!raw) return def; var v = JSON.parse(raw); return v == null ? def : v; } catch (e) { return def; } }
@@ -90,10 +93,13 @@
   var names = readJSON(LS_NAMES, {}); if (!names || typeof names !== 'object') names = {};
   var storeChoice = readJSON(LS_STORE, {}); if (!storeChoice || typeof storeChoice !== 'object') storeChoice = {};
   function canonical(id) { var g = 0; while (Object.prototype.hasOwnProperty.call(ALIASES, id) && g++ < 20) id = ALIASES[id]; return id; }
-  (function migrateNames() {
+  (function migrate() {
     var moved = false;
     Object.keys(names).forEach(function (id) { var c = canonical(id); if (c !== id) { if (!names[c]) names[c] = names[id]; delete names[id]; moved = true; } });
     if (moved) writeJSON(LS_NAMES, names);
+    var sm = false;
+    Object.keys(storeChoice).forEach(function (id) { var c = canonical(id); if (c !== id) { if (!storeChoice[c]) storeChoice[c] = storeChoice[id]; delete storeChoice[id]; sm = true; } });
+    if (sm) writeJSON(LS_STORE, storeChoice);
   })();
   function loadCart() {
     cart.clear();
@@ -109,7 +115,7 @@
   function saveCart() {
     var obj = {}; cart.forEach(function (q, id) { obj[id] = q; });
     cartSavedAt = Date.now();
-    if (!writeJSON(LS_CART, { v: 1, savedAt: cartSavedAt, items: obj }) && !storageWarned) { storageWarned = true; toast('تعذّر حفظ القائمة على هذا الجهاز. ستبقى ما دامت الصفحة مفتوحة.'); }
+    if (!writeJSON(LS_CART, { v: 1, savedAt: cartSavedAt, items: obj }) && !storageWarned) { storageWarned = true; toast('تعذّر حفظ السلة على هذا الجهاز. ستبقى ما دامت الصفحة مفتوحة.'); }
   }
   function pruneCart() {        // forget ids that no longer exist at all (after the full product list has loaded)
     var gone = []; cart.forEach(function (q, id) { if (!byId.has(id)) gone.push(id); });
@@ -128,12 +134,12 @@
     history_().forEach(function (x) { Object.keys((x && x.items) || {}).forEach(function (raw) { var id = canonical(raw); sentCount.set(id, (sentCount.get(id) || 0) + 1); }); });
   }
   function uscore(it) { return (it.u || 0) + 2 * (sentCount.get(it.id) || 0); }
+  function isUsual(it) { return uscore(it) > 0; }
 
   // ================================================================== name parts: the pack size on its own line
   var UNIT = 'كجم|كغ|غم|غ|جم|ملغ|مل|لتر|قطعة|قطع|حبة|حبات|رول|رولات|كيس|أكياس|منديل|مناديل|فوطة|فوط|ظرف|ظروف|كبسولة|كبسولات|شريحة|شرائح|ورقة|عبوة|عبوات|علبة|علب|قرص|أقراص|جالون|متر|م|سم|بيضة|بيضات|لوح|أصابع|إصبع|أونصة|قدم مربع';
   var SIZE_RE = new RegExp('(?:\\d+(?:[.,]\\d+)?\\s*[×x]\\s*)?\\d+(?:[.,]\\d+)?\\s*(?:' + UNIT + ')(?![\\u0621-\\u064A])');
   var FIT_RE = /مقاس\s*(\d+\s*\+?|[A-Za-z]{1,4}\b)/, STAGE_RE = /(?:المرحلة|مرحلة|رقم)\s*(\d+\s*\+?)/;
-  // the pack size: the whole tail when it only holds sizes («400 غ + 40 غ»، «6×125 مل»), else just the first size
   var SIZE_TAIL_RE = new RegExp('^(?:[\\s\\d.,×x+\\-–()]|' + UNIT + ')*$');
   function splitSize(it) {            // {base, size}: «نوتيلا كريمة البندق 400 غ» -> «نوتيلا كريمة البندق» + «400 غ»
     var l = label(it);
@@ -209,13 +215,11 @@
     rows.forEach(function (r) {
       var sum = 0;
       for (var i = 0; i < r[1].length; i++) { var lim = maxPer[i] >= 3.5 ? 2.5 : maxPer[i] >= 2.5 ? 2 : 0; if (r[1][i] < lim) return; sum += r[1][i]; }
-      // the type you meant first: «ماي» means water, so packs of the water types beat a brand that happens to be called «ماي»
-      var gt = r[0]._gtok, gb = 0;
+      var gt = r[0]._gtok, gb = 0;       // the kind you meant first: «ماي» means water, not a brand called «ماي»
       for (var a = 0; a < alts.length && !gb; a++) for (var b = 0; b < alts[a].length; b++) {
         var w = alts[a][b];
         if (gt.indexOf(w) >= 0 || gt.some(function (x) { return stripP(x) === w; })) { gb = 1.5; break; }
       }
-      // when the word names the type, the main type of that name leads (drinking water before rose water for «ماء»)
       out.push({ it: r[0], s: sum + gb, gs: gb && GROUPS[r[0].g] ? GROUPS[r[0].g][3] : 0 });
     });
     out.sort(function (a, b) { return b.s - a.s || uscore(b.it) - uscore(a.it) || b.gs - a.gs || (a.it.i || 0) - (b.it.i || 0); });
@@ -230,15 +234,14 @@
   var STORES = { L: 'لولو هايبرماركت', T: 'طلبات مارت' }, SHORT = { L: 'لولو', T: 'طلبات مارت' };
   function offer(it, s) { return it.off ? (s === 'L' ? it.off[0] : it.off[1]) : 0; }          // 0 not listed, -1 price unknown, else fils
   function inStock(it, s) { var f = it.off ? it.off[2] : 0; return s === 'L' ? !(f & 1) : !(f & 2); }
-  // decision for one line before ties are settled
-  function decide(it, q) {
+  function decide(it, q) {                     // one line, before ties are settled
     if (it.cat === PRODUCE) {
       var tp = offer(it, 'T');
       if (!tp) return { kind: 'R' };
       return { kind: 'S', s: 'T', why: 'produce', unit: tp > 0 ? tp : null };
     }
     var l = offer(it, 'L'), t = offer(it, 'T');
-    if (!l && !t) return storeChoice[it.id] ? { kind: 'S', s: storeChoice[it.id], why: 'chosen', unit: null, chosen: true } : { kind: 'U', why: 'no-store' };
+    if (!l && !t) return storeChoice[it.id] ? { kind: 'S', s: storeChoice[it.id], why: 'chosen', unit: null, chosen: true, miss: 'store' } : { kind: 'U', why: 'no-store' };
     if (l && !t) return { kind: 'S', s: 'L', why: 'only', unit: l > 0 ? l : null };
     if (t && !l) return { kind: 'S', s: 'T', why: 'only', unit: t > 0 ? t : null };
     var li = inStock(it, 'L'), ti = inStock(it, 'T');
@@ -246,14 +249,14 @@
     if (l < 0 || t < 0) {
       var miss = l < 0 && t < 0 ? 'both' : l < 0 ? 'L' : 'T';
       if (storeChoice[it.id]) { var c = storeChoice[it.id], cp = c === 'L' ? l : t; return { kind: 'S', s: c, why: 'chosen', unit: cp > 0 ? cp : null, chosen: true, miss: miss }; }
-      return { kind: 'U', why: 'price-missing', miss: miss };
+      return { kind: 'U', why: 'price-missing', miss: miss, known: l > 0 ? { s: 'L', p: l } : t > 0 ? { s: 'T', p: t } : null };
     }
-    var cl = l * q, ct = t * q;                 // the price shown is already after any discount; it applies to every unit
+    var cl = l * q, ct = t * q;                 // the shelf price is after any discount; it applies to every unit
     if (cl < ct) return { kind: 'S', s: 'L', why: 'cheaper', unit: l, other: t };
     if (ct < cl) return { kind: 'S', s: 'T', why: 'cheaper', unit: t, other: l };
     return { kind: 'TIE', unit: l };
   }
-  // the whole basket: settles equal prices by joining the store that already has more of the list (talabat mart if level)
+  // the whole basket: equal prices join the store that already has more of the list (talabat mart if level)
   function plan() {
     var lines = [];
     cart.forEach(function (q, id) { var it = byId.get(id); if (it) lines.push({ it: it, q: q, d: decide(it, q) }); });
@@ -271,108 +274,100 @@
       if (x.d.kind === 'S') { if (x.d.unit) res.total[x.d.s] += x.d.unit * x.q; else res.missing[x.d.s]++; }
     });
     ['L', 'T', 'U', 'R'].forEach(function (k) { res[k].sort(lineOrder); });
+    res.lines = lines.length;
+    res.priced = res.L.length + res.T.length - res.missing.L - res.missing.T;
     return res;
   }
   function lineOrder(a, b) { return a.it.cat - b.it.cat || (a.it.i != null && b.it.i != null ? a.it.i - b.it.i : a.it.g - b.it.g); }
-  function reasonText(x) {
-    var d = x.d, it = x.it;
-    if (d.kind === 'R') return 'الخضار والفواكه تُشترى من طلبات مارت فقط، وهذه العبوة غير مدرجة فيه. راجعيها: احذفيها أو اختاري بديلًا.';
-    if (d.kind === 'U') return d.why === 'no-store' ? 'لم يُوثَّق المتجر ولا السعر لهذا المنتج.' :
-      (d.miss === 'both' ? 'المنتج في المتجرين لكن السعرين غير متاحين.' : 'المنتج في المتجرين لكن سعر ' + SHORT[d.miss] + ' غير متاح.');
+  function other(s) { return s === 'L' ? 'T' : 'L'; }
+  // one short line under a basket row: why this store (prices for the chosen quantity)
+  function whyShort(x, priceShownApart) {
+    var d = x.d, q = x.q;
+    if (d.kind === 'R') return 'غير متوفر في طلبات مارت، والخضار والفواكه تُشترى منه فقط. احذفيه أو اختاري بديلًا.';
+    if (d.kind === 'U') {
+      if (d.why === 'no-store') return 'لا نعرف أين يتوفر الآن ولا سعره، فلا نعرف الأرخص.';
+      if (d.miss === 'both') return 'السعر غير متاح في المتجرين، فلا نعرف الأرخص.';
+      return 'لا نعرف الأرخص: سعر ' + SHORT[d.miss] + ' غير متاح' + (d.known && !priceShownApart ? ' (في ' + SHORT[d.known.s] + ' ' + money(d.known.p * q) + (q > 1 ? ' للكمية' : '') + ').' : '.');
+    }
     switch (d.why) {
-      case 'produce': return 'الخضار والفواكه من طلبات مارت' + (offer(it, 'L') ? ' (حتى لو كانت في لولو)' : '') + '.';
+      case 'produce': return 'الخضار والفواكه من طلبات مارت فقط.';
       case 'only': return 'متوفر في ' + SHORT[d.s] + ' فقط.';
-      case 'stock': return 'غير متوفر في ' + SHORT[d.s === 'L' ? 'T' : 'L'] + ' وقت آخر تحديث، فوُضع في ' + SHORT[d.s] + '.';
-      case 'cheaper': return 'الأرخص بحسب آخر سعر متاح: ' + SHORT[d.s] + ' ' + money(d.unit) + ' مقابل ' + money(d.other) + ' في ' + SHORT[d.s === 'L' ? 'T' : 'L'] + '.';
-      case 'tie-join': return 'السعر نفسه في المتجرين (' + money(d.unit) + ')، فوُضع مع بقية مشترياتك من ' + SHORT[d.s] + '.';
-      case 'tie-default': return 'السعر نفسه في المتجرين (' + money(d.unit) + ')؛ عند التساوي وعدد الأصناف نفسه يُوضع في طلبات مارت.';
-      case 'chosen': return 'اخترتِ ' + SHORT[d.s] + ' لهذا المنتج.';
+      case 'stock': return 'غير متوفر في ' + SHORT[other(d.s)] + ' وقت آخر تحديث للأسعار.';
+      case 'cheaper': return 'الأرخص' + (q > 1 ? ' للكمية ' + ar(q) : '') + ': ' + money(d.unit * q) + ' مقابل ' + money(d.other * q) + ' في ' + SHORT[other(d.s)] + '.';
+      case 'tie-join': return 'السعر نفسه في المتجرين، فوُضع مع بقية أصنافك من ' + SHORT[d.s] + '.';
+      case 'tie-default': return 'السعر نفسه في المتجرين؛ عند التساوي يُوضع في طلبات مارت.';
+      case 'chosen': return d.miss === 'store' ? 'لا نعرف أين يتوفر؛ اخترتِ ' + SHORT[d.s] + '.' : 'سعر ' + SHORT[d.miss === 'both' ? d.s : d.miss] + ' غير متاح؛ اخترتِ ' + SHORT[d.s] + '.';
     }
     return '';
   }
-  function lineFor(it) {                       // the decision as the list would make it (ties settled with the rest of the list)
+  function lineFor(it) {                       // the decision as the basket would make it
     if (cart.has(it.id) && cartKnown()) { var P = plan(), all = P.L.concat(P.T, P.U, P.R); for (var i = 0; i < all.length; i++) if (all[i].it === it) return all[i]; }
     var d = decide(it, 1);
     if (d.kind === 'TIE') d = { kind: 'S', s: 'T', why: 'tie-default', unit: d.unit };
     return { it: it, q: cart.get(it.id) || 1, d: d };
   }
-  function shownPrice(it) {                    // one quiet number on a product row; nothing when the store is not settled
+  function shownPrice(it) {                    // the price on a card: the store it would be bought from, when known
     var d = decide(it, 1);
     return (d.kind === 'S' || d.kind === 'TIE') && d.unit ? money(d.unit) : '';
   }
 
   // ================================================================== elements
-  var topEl = $('#top'), qInput = $('#q'), qClear = $('#qClear'), jumpEl = $('#jump'), homeEl = $('#home'), resultsEl = $('#results');
-  var barEl = $('#bar'), listBtn = $('#listBtn'), lbCount = $('#lbCount'), lbTitle = $('#lbTitle'), lbSub = $('#lbSub');
-  var pList = $('#pList'), listSub = $('#listSub'), listBody = $('#listBody'), clearBtn = $('#clearBtn');
-  var sendBtn = $('#sendBtn'), sendLabel = $('#sendLabel'), sendNote = $('#sendNote');
-  var pSec = $('#pSec'), secTitle = $('#secTitle'), secSub = $('#secSub'), secBody = $('#secBody');
-  var pType = $('#pType'), typeTitle = $('#typeTitle'), typeSub = $('#typeSub'), typeTools = $('#typeTools'), tSearch = $('#tSearch'), tq = $('#tq'), tFacets = $('#tFacets'), typeBody = $('#typeBody');
+  var topEl = $('#top'), qInput = $('#q'), qClear = $('#qClear'), homeEl = $('#home'), resultsEl = $('#results');
+  var barEl = $('#bar'), cartBtn = $('#cartBtn'), cbCount = $('#cbCount'), cbTitle = $('#cbTitle'), cbSub = $('#cbSub');
+  var pSec = $('#pSec'), secTitle = $('#secTitle'), secSub = $('#secSub'), secHeads = $('#secHeads'), secBody = $('#secBody'), secSwitch = $('#secSwitch');
+  var pType = $('#pType'), typeTitle = $('#typeTitle'), typeSub = $('#typeSub'), typeTools = $('#typeTools'), typeBody = $('#typeBody');
+  var pCart = $('#pCart'), cartSub = $('#cartSub'), cartBody = $('#cartBody'), clearBtn = $('#clearBtn');
+  var sendBtn = $('#sendBtn'), sendLabel = $('#sendLabel'), sendNote = $('#sendNote'), previewBtn = $('#previewBtn');
+  var pSections = $('#pSections'), sectionsBody = $('#sectionsBody');
+  var pItem = $('#pItem'), itImg = $('#itImg'), itBadge = $('#itBadge'), itName = $('#itName'), itSize = $('#itSize'), itStore = $('#itStore'), itCtrl = $('#itCtrl'), itMore = $('#itMore');
   var pHist = $('#pHist'), histBody = $('#histBody');
   var previewEl = $('#preview'), pvPages = $('#pvPages'), pvInfo = $('#pvInfo');
-  var viewer = $('#viewer'), vImg = $('#vImg'), vName = $('#vName'), vSize = $('#vSize'), vStore = $('#vStore'), vCtrl = $('#vCtrl'), vMore = $('#vMore');
   var toastEl = $('#toast');
 
-  // ================================================================== one product row: photo · name · size · + (or the quantity)
+  // ================================================================== + and the quantity
   function ctrlHTML(q, wide) {
-    if (!q) return '<button type="button" class="add" data-act="add" aria-label="إضافة">' + PLUS + (wide ? '<span>أضيفي إلى القائمة</span>' : '') + '</button>';
+    if (!q) return '<button type="button" class="add" data-act="add" aria-label="إضافة إلى السلة">' + PLUS + (wide ? '<span>أضيفي إلى السلة</span>' : '') + '</button>';
     return '<div class="stepper" role="group" aria-label="الكمية"><button type="button" data-act="inc" aria-label="زيادة الكمية">+</button>' +
-      '<output aria-live="polite">' + ar(q) + '</output><button type="button" data-act="dec" aria-label="' + (q === 1 ? 'إزالة من القائمة' : 'إنقاص الكمية') + '">' + (q === 1 ? TRASH : '−') + '</button></div>';
+      '<output aria-live="polite">' + ar(q) + '</output><button type="button" data-act="dec" aria-label="' + (q === 1 ? 'إزالة من السلة' : 'إنقاص الكمية') + '">' + (q === 1 ? TRASH : '−') + '</button></div>';
   }
   function updateCtrl(box, q) {
+    if (!box) return;
     var st = box.querySelector('.stepper');
     if (q && st) {
       st.querySelector('output').textContent = ar(q);
       var dec = st.querySelector('[data-act="dec"]'), wantTrash = q === 1, isTrash = !!dec.querySelector('svg');
-      if (wantTrash !== isTrash) { dec.innerHTML = wantTrash ? TRASH : '−'; dec.setAttribute('aria-label', wantTrash ? 'إزالة من القائمة' : 'إنقاص الكمية'); }
-    } else box.innerHTML = ctrlHTML(q, box === vCtrl);
+      if (wantTrash !== isTrash) { dec.innerHTML = wantTrash ? TRASH : '−'; dec.setAttribute('aria-label', wantTrash ? 'إزالة من السلة' : 'إنقاص الكمية'); }
+    } else box.innerHTML = ctrlHTML(q, box === itCtrl);
   }
-  function pickRow(it, opt) {
-    opt = opt || {};
-    var row = document.createElement('div');
-    row.className = 'pick'; row.dataset.id = it.id;
-    var ss = splitSize(it), q = cart.get(it.id) || 0;
-    row.innerHTML = '<button class="pic" type="button"><img alt="" loading="lazy" decoding="async"></button>' +
-      '<div class="pk-text"><p class="pk-name"></p><p class="pk-meta"><span class="pk-size"></span><span class="pk-price"></span></p></div><div class="ctrl"></div>';
-    row.querySelector('img').src = thumbUrl(it);
-    row.querySelector('.pic').setAttribute('aria-label', 'صورة ' + label(it));
-    row.querySelector('.pk-name').textContent = arText(ss.base);
-    row.querySelector('.pk-size').textContent = arText(ss.size);
-    row.querySelector('.pk-price').textContent = opt.noPrice ? '' : shownPrice(it);
-    if (opt.tag && it.u > 0) { var tg = document.createElement('span'); tg.className = 'pk-tag'; tg.textContent = 'معتاد'; row.querySelector('.pk-meta').appendChild(tg); }
-    row.classList.toggle('on', q > 0);
-    var c = row.querySelector('.ctrl'); c.innerHTML = ctrlHTML(q);
-    if (!q) c.querySelector('button').setAttribute('aria-label', 'إضافة ' + label(it));
-    return row;
+  // product card: big photo (with «معتاد» and +)، name، size، price
+  function card(it) {
+    var el = document.createElement('article');
+    el.className = 'card'; el.dataset.id = it.id;
+    var ss = splitSize(it), q = cart.get(it.id) || 0, price = shownPrice(it);
+    el.innerHTML = '<div class="c-img"><button class="pic" type="button"><img alt="" loading="lazy" decoding="async"></button>' +
+      (isUsual(it) ? '<span class="badge-usual">معتاد</span>' : '') + '<div class="c-ctrl"></div></div>' +
+      '<div class="c-text"><p class="c-name"></p><p class="c-size"></p><p class="c-price"></p></div>';
+    var img = el.querySelector('img'); img.src = thumbUrl(it);
+    el.querySelector('.pic').setAttribute('aria-label', 'تفاصيل ' + label(it));
+    el.querySelector('.c-name').textContent = arText(ss.base);
+    el.querySelector('.c-size').textContent = arText(ss.size);
+    el.querySelector('.c-price').textContent = price;
+    el.classList.toggle('on', q > 0);
+    var c = el.querySelector('.c-ctrl'); c.innerHTML = ctrlHTML(q);
+    if (!q) c.querySelector('button').setAttribute('aria-label', 'إضافة ' + label(it) + ' إلى السلة');
+    return el;
   }
   function refreshItem(id) {
     var q = cart.get(id) || 0;
-    document.querySelectorAll('.pick[data-id="' + cssId(id) + '"]').forEach(function (row) {
-      row.classList.toggle('on', q > 0);
-      updateCtrl(row.querySelector('.ctrl'), q);
-    });
-    if (viewerId === id) updateCtrl(vCtrl, q);
+    document.querySelectorAll('.card[data-id="' + cssId(id) + '"]').forEach(function (el) { el.classList.toggle('on', q > 0); updateCtrl(el.querySelector('.c-ctrl'), q); });
+    if (itemId === id) updateCtrl(itCtrl, q);
   }
-
-  // ================================================================== main screen: the home's usual products, section by section
-  var expanded = new Set(), homeKey = '';
-  function usualList() {
-    var out = [];
-    byId.forEach(function (it) { if (!it.hid && it.g >= 0 && GROUPS[it.g] && uscore(it) > 0) out.push(it); });
-    return out;
+  function sortedItems(gi) {                  // a kind's packs: the home's usual first, then the store's order
+    return (groupItems[gi] || []).slice().sort(function (a, b) { return uscore(b) - uscore(a) || a.i - b.i; });
   }
-  function sectionSplit(items) {               // [shown first, the rest]: what is bought again and again, then what was bought once
-    var best = new Map();
-    items.forEach(function (it) { var s = uscore(it); if (s > (best.get(it.g) || 0)) best.set(it.g, s); });
-    var cmp = function (a, b) {               // products of one kind stay together; the kinds bought most often first
-      return best.get(b.g) - best.get(a.g) || a.g - b.g || uscore(b) - uscore(a) || (a.i != null && b.i != null ? a.i - b.i : 0) || (a.id < b.id ? -1 : 1);
-    };
-    var main = items.filter(function (it) { return uscore(it) >= 2; }).sort(cmp);
-    var rest = items.filter(function (it) { return uscore(it) < 2; }).sort(cmp);
-    while (main.length < 4 && rest.length) main.push(rest.shift());
-    return [main, rest];
-  }
+  function secGroups(ci) { var out = []; GROUPS.forEach(function (g, gi) { if (HEADS[g[1]][0] === ci) out.push(gi); }); return out; }
   function secProducts(ci) { var n = 0; GROUPS.forEach(function (g) { if (HEADS[g[1]][0] === ci) n += g[3]; }); return n; }
+  function secUsual(ci) { var n = 0; byId.forEach(function (it) { if (!it.hid && it.cat === ci && isUsual(it)) n++; }); return n; }
   function secPhoto(ci) {
     var best = -1, gi = -1;
     GROUPS.forEach(function (g, i) { if (HEADS[g[1]][0] === ci && (g[4] || 0) > best) { best = g[4] || 0; gi = i; } });
@@ -380,99 +375,58 @@
     var g = GROUPS[gi], rep = byId.get(g[2]) || { id: g[2], v: g[5] || '' };
     return thumbUrl(rep);
   }
+
+  // ================================================================== home: search, then every section
   function renderHome() {
-    var list = usualList();
-    homeKey = list.map(function (it) { return it.id; }).sort().join(',');
-    var bySec = new Map();
-    list.forEach(function (it) { if (!bySec.has(it.cat)) bySec.set(it.cat, []); bySec.get(it.cat).push(it); });
+    homeEl.innerHTML = '';
     var frag = document.createDocumentFragment();
-    var intro = document.createElement('div'); intro.id = 'intro'; frag.appendChild(intro);
-    jumpEl.innerHTML = '';
+    var notes = document.createElement('div'); notes.id = 'homeNotes'; frag.appendChild(notes);
+    var total = 0; GROUPS.forEach(function (g) { total += g[3]; });
+    var h = document.createElement('h2'); h.className = 'h2'; h.innerHTML = 'الأقسام <small></small>';
+    h.querySelector('small').textContent = arNum(total) + ' منتج من لولو وطلبات مارت';
+    frag.appendChild(h);
+    var grid = document.createElement('div'); grid.className = 'sec-grid';
     CATS.forEach(function (name, ci) {
-      var items = bySec.get(ci); if (!items || !items.length) return;
-      var parts = sectionSplit(items);
-      var sec = document.createElement('section'); sec.className = 'sec'; sec.id = 's' + ci;
-      var h = document.createElement('h2'); h.className = 'sec-h'; h.textContent = name; sec.appendChild(h);
-      parts[0].forEach(function (it) { sec.appendChild(pickRow(it)); });
-      if (parts[1].length) {
-        if (expanded.has(ci)) parts[1].forEach(function (it) { sec.appendChild(pickRow(it)); });
-        else { var mb = document.createElement('button'); mb.type = 'button'; mb.className = 'more-btn'; mb.dataset.act = 'expand'; mb.dataset.c = ci; mb.textContent = 'المزيد مما اشتريتموه من قبل (' + ar(parts[1].length) + ')'; sec.appendChild(mb); }
-      }
-      var link = document.createElement('button'); link.type = 'button'; link.className = 'sec-link'; link.dataset.sec = ci; link.textContent = 'كل منتجات ' + name; sec.appendChild(link);
-      frag.appendChild(sec);
-      var chip = document.createElement('button'); chip.type = 'button'; chip.dataset.target = 's' + ci; chip.textContent = name; jumpEl.appendChild(chip);
+      if (!secProducts(ci)) return;
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'sec-tile'; b.dataset.sec = ci;
+      var u = secUsual(ci);
+      b.innerHTML = '<span class="st-img"><img alt="" loading="lazy" decoding="async"></span><span class="st-name"></span>' + (u ? '<span class="st-usual"></span>' : '');
+      b.querySelector('img').src = secPhoto(ci);
+      b.querySelector('.st-name').textContent = name;
+      if (u) b.querySelector('.st-usual').textContent = ar(u) + ' معتاد';
+      b.setAttribute('aria-label', name + (u ? '، فيه ' + nProducts(u) + ' من معتادكم' : ''));
+      grid.appendChild(b);
     });
-    // every section, for what this home does not usually buy
-    var all = document.createElement('section'); all.className = 'all'; all.id = 'sAll';
-    all.innerHTML = '<h2 class="sec-h">كل الأقسام</h2><p class="hint">لمنتج لا تشترونه عادةً: ابحثي باسمه في الأعلى، أو افتحي قسمه.</p>';
-    CATS.forEach(function (name, ci) {
-      var n = secProducts(ci); if (!n) return;
-      var b = document.createElement('button'); b.type = 'button'; b.className = 'row-link'; b.dataset.sec = ci;
-      b.innerHTML = '<span class="rl-img"><img alt="" loading="lazy" decoding="async"></span><span class="rl-text"><b></b><small></small></span>';
-      b.querySelector('img').src = secPhoto(ci); b.querySelector('b').textContent = name; b.querySelector('small').textContent = nProducts(n);
-      all.appendChild(b);
-    });
-    frag.appendChild(all);
-    var chipAll = document.createElement('button'); chipAll.type = 'button'; chipAll.dataset.target = 'sAll'; chipAll.textContent = 'كل الأقسام'; jumpEl.appendChild(chipAll);
-    homeEl.innerHTML = ''; homeEl.appendChild(frag);
-    renderIntro(); spy.last = null; spy();
+    frag.appendChild(grid);
+    var help = document.createElement('p'); help.className = 'home-help';
+    help.textContent = 'داخل كل قسم تظهر المنتجات التي تشترونها عادةً أولًا وعليها «معتاد»، ثم بقية الأنواع والعبوات. اضغطي + لإضافة أي منتج.';
+    frag.appendChild(help);
+    homeEl.appendChild(frag);
+    renderHomeNotes();
   }
-  function sameAsCart(items) {                // is this saved list exactly what is in the list now?
+  function sameAsCart(items) {
     var o = {}, n = 0;
     Object.keys(items || {}).forEach(function (raw) { o[canonical(raw)] = Math.floor(items[raw]); });
     for (var k in o) { n++; if (cart.get(k) !== o[k]) return false; }
     return n === cart.size;
   }
-  function renderIntro() {
-    var el = document.getElementById('intro'); if (!el) return;
-    el.innerHTML = ''; el.className = '';
+  function renderHomeNotes() {
+    var el = document.getElementById('homeNotes'); if (!el) return;
+    el.innerHTML = '';
     var h = history_();
-    if (cart.size) {
-      // the list on screen was already sent: offer a fresh one for the next shopping
-      if (h.length && cartSavedAt <= (h[0].t || 0) && sameAsCart(h[0].items)) {     // untouched since it was sent
-        el.className = 'intro';
-        el.innerHTML = '<b></b>لقائمة جديدة ابدئي من الصفر، أو أضيفي إليها ما تحتاجينه وأرسليها مرة أخرى.<div class="row"><button type="button" class="btn primary" data-act="newlist">ابدئي قائمة جديدة</button></div>';
-        el.querySelector('b').textContent = 'أرسلتِ هذه القائمة ' + (new Date(h[0].t).toDateString() === new Date().toDateString() ? 'اليوم' : dayText(h[0].t));
-      }
-      return;
-    }
-    el.className = 'intro';
-    if (h.length) {
-      el.innerHTML = '<b>ابدئي من قائمتك السابقة؟</b><span></span><div class="row"><button type="button" class="btn primary" data-act="hadd" data-h="0">أضيفيها ثم عدّليها</button>' +
-        (h.length > 1 ? '<button type="button" class="btn secondary" data-act="hopen">قوائم أخرى</button>' : '') + '</div>';
-      el.querySelector('span').textContent = 'قائمة ' + dayText(h[0].t) + ' · ' + nItems(Object.keys(h[0].items || {}).length) + '. أو اضغطي + على ما تحتاجينه أدناه.';
-    } else {
-      el.innerHTML = '<b>هذه مشترياتكم المعتادة</b>اضغطي + بجانب ما تحتاجينه، ثم «قائمتي» في الأسفل لإرسالها. وأي منتج آخر ابحثي عنه في الأعلى.';
+    if (cart.size && h.length && cartSavedAt <= (h[0].t || 0) && sameAsCart(h[0].items)) {
+      var s = document.createElement('div'); s.className = 'note-card sent';
+      s.innerHTML = '<div class="nc-text"><b></b><small>لقائمة جديدة ابدئي من سلة فارغة.</small></div><button type="button" class="btn primary" data-act="newlist">قائمة جديدة</button>';
+      s.querySelector('b').textContent = 'أرسلتِ هذه القائمة ' + (new Date(h[0].t).toDateString() === new Date().toDateString() ? 'اليوم' : dayText(h[0].t));
+      el.appendChild(s);
+    } else if (!cart.size && h.length) {
+      var c = document.createElement('div'); c.className = 'note-card';
+      c.innerHTML = '<div class="nc-text"><b>ابدئي من قائمتك السابقة؟</b><small></small></div><button type="button" class="btn secondary" data-act="hadd" data-h="0">أضيفيها</button>';
+      c.querySelector('small').textContent = 'قائمة ' + dayText(h[0].t) + '، ' + nItems(Object.keys(h[0].items || {}).length) + (h.length > 1 ? '، ' : '');
+      if (h.length > 1) { var more = document.createElement('button'); more.type = 'button'; more.className = 'link'; more.dataset.act = 'hopen'; more.textContent = 'قوائم أخرى'; more.style.minHeight = '0'; c.querySelector('small').appendChild(more); }
+      el.appendChild(c);
     }
   }
-  function expandSection(btn) {
-    var ci = +btn.dataset.c, items = usualList().filter(function (it) { return it.cat === ci; });
-    expanded.add(ci);
-    var frag = document.createDocumentFragment();
-    sectionSplit(items)[1].forEach(function (it) { frag.appendChild(pickRow(it)); });
-    btn.replaceWith(frag);
-  }
-  // the section chips follow the scroll; a tap jumps to the section
-  var spyRaf = 0;
-  function spy() {
-    spyRaf = 0;
-    if (homeEl.hidden || pagesOpen()) return;
-    var limit = topEl.getBoundingClientRect().bottom + 12, cur = null, btns = jumpEl.children;
-    for (var i = 0; i < btns.length; i++) { var s = document.getElementById(btns[i].dataset.target); if (s && s.getBoundingClientRect().top <= limit) cur = btns[i]; else if (s) break; }
-    for (var j = 0; j < btns.length; j++) btns[j].setAttribute('aria-current', btns[j] === cur ? 'true' : 'false');
-    if (cur && cur !== spy.last) {
-      spy.last = cur;
-      var r = cur.getBoundingClientRect(), p = jumpEl.getBoundingClientRect();
-      if (r.left < p.left + 8 || r.right > p.right - 8) { var dx = (r.left + r.width / 2) - (p.left + p.width / 2); try { jumpEl.scrollBy({ left: dx, behavior: 'smooth' }); } catch (e) { jumpEl.scrollLeft += dx; } }
-    }
-  }
-  window.addEventListener('scroll', function () { if (!spyRaf) spyRaf = requestAnimationFrame(spy); }, { passive: true });
-  jumpEl.addEventListener('click', function (e) {
-    var b = e.target.closest('button[data-target]'); if (!b) return;
-    var s = document.getElementById(b.dataset.target); if (!s) return;
-    var dy = s.getBoundingClientRect().top - topEl.offsetHeight + 1;
-    window.scrollTo({ top: window.pageYOffset + dy, behavior: Math.abs(dy) > window.innerHeight * 2 ? 'auto' : 'smooth' });   // far sections: straight there
-  });
 
   // ================================================================== search: products straight away, each with its +
   var searchTimer = 0, searchLimit = 30, homeScroll = 0;
@@ -480,7 +434,7 @@
     if (on === !homeEl.hidden) {
       if (on) homeScroll = window.scrollY;
       homeEl.hidden = on; resultsEl.hidden = !on; topEl.classList.toggle('searching', on);
-      if (!on) { resultsEl.innerHTML = ''; window.scrollTo(0, homeScroll); spy.last = null; spy(); }
+      if (!on) { resultsEl.innerHTML = ''; window.scrollTo(0, homeScroll); }
     }
   }
   function renderResults() {
@@ -489,65 +443,149 @@
     if (!q) { setSearching(false); return; }
     setSearching(true);
     if (!itemsLoaded) {
-      resultsEl.innerHTML = '<p class="hint">جارٍ تحميل المنتجات…</p>';
+      resultsEl.innerHTML = '<p class="loading">جارٍ تحميل المنتجات…</p>';
       afterItems(function () { if (qInput.value.trim() === q) renderResults(); });
       return;
     }
     var res = searchItems(ITEMS, q) || [];
     resultsEl.innerHTML = '';
     if (!res.length) {
-      resultsEl.innerHTML = '<div class="empty-box"><b></b>جرّبي كلمة أخرى، أو اسم العلامة التجارية، أو افتحي القسم من «كل الأقسام».</div>';
+      resultsEl.innerHTML = '<div class="empty-box"><b></b>جرّبي كلمة أخرى أو اسم العلامة التجارية، أو تصفّحي الأقسام.<div class="row"><button type="button" class="btn secondary" data-act="clearq">عرض الأقسام</button></div></div>';
       resultsEl.querySelector('b').textContent = 'لا توجد منتجات باسم «' + q + '»';
       return;
     }
-    var frag = document.createDocumentFragment();
-    res.slice(0, searchLimit).forEach(function (r) { frag.appendChild(pickRow(r.it, { tag: true })); });
-    resultsEl.appendChild(frag);
-    if (res.length > searchLimit) { var m = document.createElement('button'); m.type = 'button'; m.className = 'more-btn'; m.dataset.act = 'more'; m.textContent = 'عرض المزيد (' + ar(res.length - searchLimit) + ')'; resultsEl.appendChild(m); }
-    // the kinds behind the results, for seeing every size and brand of one kind
+    // the kinds behind the results: open one to see every size and brand, with filters
     var gscore = new Map();
     res.slice(0, 300).forEach(function (r) { gscore.set(r.it.g, (gscore.get(r.it.g) || 0) + r.s); });
-    var gs = Array.from(gscore.keys()).filter(function (gi) { return GROUPS[gi] && GROUPS[gi][3] > 1; })
-      .sort(function (a, b) { return gscore.get(b) - gscore.get(a); }).slice(0, 6);
+    var gs = Array.from(gscore.keys()).filter(function (gi) { return GROUPS[gi] && GROUPS[gi][3] > 1; }).sort(function (a, b) { return gscore.get(b) - gscore.get(a); }).slice(0, 8);
     if (gs.length) {
-      var box = document.createElement('div'); box.className = 'res-types';
-      box.innerHTML = '<h3>كل المنتجات من نوع:</h3><div class="chips"></div>';
+      var row = document.createElement('div'); row.className = 'chips-row'; row.style.boxShadow = 'none'; row.style.background = 'transparent';
       gs.forEach(function (gi) {
         var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.dataset.g = gi;
-        b.innerHTML = '<span></span><small></small>'; b.firstChild.textContent = arText(GROUPS[gi][0]); b.lastChild.textContent = ar(GROUPS[gi][3]);
-        box.lastChild.appendChild(b);
+        b.innerHTML = '<span></span><small></small>'; b.firstChild.textContent = 'كل ' + arText(GROUPS[gi][0]); b.lastChild.textContent = ar(GROUPS[gi][3]);
+        row.appendChild(b);
       });
-      resultsEl.appendChild(box);
+      resultsEl.appendChild(row);
     }
+    var info = document.createElement('p'); info.className = 'count-line'; info.textContent = nProducts(res.length) + '، ما تشترونه عادةً أولًا';
+    resultsEl.appendChild(info);
+    var grid = document.createElement('div'); grid.className = 'grid';
+    res.slice(0, searchLimit).forEach(function (r) { grid.appendChild(card(r.it)); });
+    resultsEl.appendChild(grid);
+    if (res.length > searchLimit) { var m = document.createElement('button'); m.type = 'button'; m.className = 'btn secondary'; m.dataset.act = 'more'; m.style.margin = '4px 12px 0'; m.style.width = 'calc(100% - 24px)'; m.textContent = 'عرض المزيد (' + arNum(res.length - searchLimit) + ')'; resultsEl.appendChild(m); }
   }
-  qInput.addEventListener('input', function () { qClear.hidden = !qInput.value; clearTimeout(searchTimer); searchTimer = setTimeout(function () { searchLimit = 30; renderResults(); if (!homeEl.hidden) return; window.scrollTo(0, 0); }, 160); });
+  qInput.addEventListener('input', function () { qClear.hidden = !qInput.value; clearTimeout(searchTimer); searchTimer = setTimeout(function () { searchLimit = 30; renderResults(); if (!resultsEl.hidden) window.scrollTo(0, 0); }, 160); });
   qInput.addEventListener('focus', function () { loadItems(); });
   qInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); qInput.blur(); } });
   qClear.addEventListener('click', function () { qInput.value = ''; renderResults(); qInput.focus(); });
 
-  // ================================================================== browsing: a section, then the products of one kind
-  function openSection(ci) {
+  // ================================================================== a section: shelves of kinds, the home's usual kinds first
+  var secState = null, secIO = null;
+  function openSection(ci, keepPage) {
+    secState = { ci: ci, head: null, blocks: [], done: 0 };
     secTitle.textContent = CATS[ci] || '';
-    secSub.textContent = nProducts(secProducts(ci));
-    secBody.innerHTML = '';
-    var byHead = new Map(), heads = [];
-    GROUPS.forEach(function (g, gi) { if (HEADS[g[1]][0] !== ci) return; if (!byHead.has(g[1])) { byHead.set(g[1], []); heads.push(g[1]); } byHead.get(g[1]).push(gi); });
-    var frag = document.createDocumentFragment();
-    heads.forEach(function (hi) {
-      var h = document.createElement('h3'); h.className = 'head-h'; h.textContent = HEADS[hi][1]; frag.appendChild(h);
-      byHead.get(hi).slice().sort(function (a, b) { return (GROUPS[b][4] || 0) - (GROUPS[a][4] || 0) || a - b; }).forEach(function (gi) {
-        var g = GROUPS[gi], b = document.createElement('button'); b.type = 'button'; b.className = 'row-link'; b.dataset.g = gi;
-        b.innerHTML = '<span class="rl-img"><img alt="" loading="lazy" decoding="async"></span><span class="rl-text"><b></b><small></small></span>';
-        var rep = byId.get(g[2]) || { id: g[2], v: g[5] || '' };
-        b.querySelector('img').src = thumbUrl(rep);
-        b.querySelector('b').textContent = arText(g[0]);
-        b.querySelector('small').textContent = nProducts(g[3]) + (g[4] > 0 ? ' · تشترونه عادةً' : '');
-        frag.appendChild(b);
+    secSub.textContent = nProducts(secProducts(ci)) + '، ' + nKinds(secGroups(ci).length);
+    // sub-sections as filters
+    secHeads.innerHTML = '';
+    var heads = []; secGroups(ci).forEach(function (gi) { var h = GROUPS[gi][1]; if (heads.indexOf(h) < 0) heads.push(h); });
+    if (heads.length > 1) {
+      [null].concat(heads).forEach(function (h) {
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; if (h != null) b.dataset.head = h;
+        b.textContent = h == null ? 'الكل' : HEADS[h][1];
+        b.setAttribute('aria-pressed', h == null ? 'true' : 'false');
+        secHeads.appendChild(b);
       });
-    });
-    secBody.appendChild(frag); secBody.scrollTop = 0;
-    openPage(pSec);
+    }
+    secHeads.hidden = heads.length < 2;
+    secBody.innerHTML = '<p class="loading">جارٍ تحميل المنتجات…</p>';
+    if (!keepPage) openPage(pSec);
+    afterItems(function () { if (secState && secState.ci === ci) buildSection(); });
   }
+  function kindInfo(gi) {
+    var items = sortedItems(gi), score = 0;
+    items.forEach(function (it) { var s = uscore(it); if (s > score) score = s; });
+    return { gi: gi, head: GROUPS[gi][1], items: items, score: score };
+  }
+  function buildSection() {
+    var st = secState, ci = st.ci, kinds = secGroups(ci).map(kindInfo).filter(function (k) { return k.items.length; });
+    var blocks = [];
+    var total = kinds.reduce(function (a, k) { return a + k.items.length; }, 0);
+    if (total <= 40) {                          // a small section reads best as one grid
+      var all = []; kinds.forEach(function (k) { all = all.concat(k.items); });
+      all.sort(function (a, b) { return uscore(b) - uscore(a) || a.i - b.i; });
+      blocks.push({ grid: all });
+    } else if (st.head == null) {
+      var usual = kinds.filter(function (k) { return k.score > 0; }).sort(function (a, b) { return b.score - a.score || a.gi - b.gi; });
+      var rest = kinds.filter(function (k) { return !(k.score > 0); });
+      if (usual.length) { blocks.push({ title: 'ما تشترونه عادةً من هذا القسم' }); usual.forEach(function (k) { blocks.push({ shelf: k }); }); }
+      var last = null;
+      rest.forEach(function (k) { if (k.head !== last) { last = k.head; blocks.push({ title: (usual.length ? 'بقية ' : '') + HEADS[k.head][1] }); } blocks.push({ shelf: k }); });
+    } else {
+      var inHead = kinds.filter(function (k) { return k.head === st.head; });
+      inHead.filter(function (k) { return k.score > 0; }).sort(function (a, b) { return b.score - a.score || a.gi - b.gi; }).forEach(function (k) { blocks.push({ shelf: k }); });
+      inHead.filter(function (k) { return !(k.score > 0); }).forEach(function (k) { blocks.push({ shelf: k }); });
+    }
+    st.blocks = blocks; st.done = 0;
+    secBody.innerHTML = ''; secBody.scrollTop = 0;
+    var sentinel = document.createElement('div'); sentinel.className = 'sentinel'; sentinel.style.height = '1px';
+    secBody.appendChild(sentinel);
+    moreBlocks(8);
+    if (secIO) secIO.disconnect();
+    if (window.IntersectionObserver) {
+      secIO = new IntersectionObserver(function (es) { if (es.some(function (e) { return e.isIntersecting; })) moreBlocks(8); }, { root: secBody, rootMargin: '900px 0px' });
+      secIO.observe(sentinel);
+    }
+  }
+  function moreBlocks(n) {
+    var st = secState; if (!st) return;
+    var sentinel = secBody.querySelector('.sentinel'), frag = document.createDocumentFragment();
+    var end = Math.min(st.blocks.length, st.done + n);
+    for (var i = st.done; i < end; i++) frag.appendChild(blockEl(st.blocks[i]));
+    st.done = end;
+    secBody.insertBefore(frag, sentinel);
+    if (!window.IntersectionObserver && st.done < st.blocks.length) setTimeout(function () { moreBlocks(n); }, 50);
+  }
+  function blockEl(b) {
+    if (b.title) { var t = document.createElement('h3'); t.className = 'head-title'; t.textContent = b.title; return t; }
+    if (b.grid) { var g = document.createElement('div'); g.className = 'grid'; b.grid.forEach(function (it) { g.appendChild(card(it)); }); return g; }
+    var k = b.shelf, G = GROUPS[k.gi], sec = document.createElement('section'); sec.className = 'shelf';
+    var head = document.createElement('div'); head.className = 'shelf-h';
+    head.innerHTML = '<h3></h3><small></small>' + (k.score > 0 ? '<span class="usual-mark">معتاد</span>' : '') +
+      (k.items.length > 2 ? '<button type="button" class="all">عرض الكل ‹</button>' : '');
+    head.querySelector('h3').textContent = arText(G[0]);
+    head.querySelector('small').textContent = ar(k.items.length);
+    var all = head.querySelector('.all'); if (all) { all.dataset.g = k.gi; all.setAttribute('aria-label', 'كل ' + G[0] + '، ' + nProducts(k.items.length)); }
+    sec.appendChild(head);
+    var row = document.createElement('div'); row.className = 'shelf-row';
+    k.items.slice(0, 10).forEach(function (it) { row.appendChild(card(it)); });
+    if (k.items.length > 10) {
+      var m = document.createElement('button'); m.type = 'button'; m.className = 'more-card'; m.dataset.g = k.gi;
+      m.innerHTML = '<b>‹</b><span></span>'; m.lastChild.textContent = 'كل الـ' + ar(k.items.length) + ' مع الفرز';
+      row.appendChild(m);
+    }
+    sec.appendChild(row);
+    return sec;
+  }
+  secHeads.addEventListener('click', function (e) {
+    var b = e.target.closest('.chip'); if (!b || !secState) return;
+    secHeads.querySelectorAll('.chip').forEach(function (c) { c.setAttribute('aria-pressed', c === b ? 'true' : 'false'); });
+    secState.head = b.dataset.head != null ? +b.dataset.head : null;
+    buildSection();
+    try { b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch (er) { }
+  });
+  function openSections() {
+    sectionsBody.innerHTML = '';
+    CATS.forEach(function (name, ci) {
+      var n = secProducts(ci); if (!n) return;
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'sec-row'; b.dataset.sec = ci;
+      if (secState && secState.ci === ci) b.setAttribute('aria-current', 'true');
+      b.innerHTML = '<img alt="" loading="lazy"><b></b><small></small>';
+      b.querySelector('img').src = secPhoto(ci); b.querySelector('b').textContent = name; b.querySelector('small').textContent = nProducts(n);
+      sectionsBody.appendChild(b);
+    });
+    openPage(pSections);
+  }
+  secSwitch.addEventListener('click', openSections);
 
   // ---------------------------------------------------------------- filters for one kind (sizes of diapers, colours of grapes, brands …)
   var STOP = new Set(['من', 'في', 'على', 'او', 'حجم', 'عبوه', 'عبوات', 'قطعه', 'قطع', 'حبه', 'حبات', 'غ', 'غم', 'جم', 'كجم', 'مل', 'لتر', 'كيس', 'اكياس',
@@ -563,14 +601,14 @@
   var ORIGIN_SET = new Set(ORIGINS);
   var FAT = [[/كامل(ه)?\s*الدسم/, 'كامل الدسم'], [/قليل(ه)?\s*الدسم/, 'قليل الدسم'], [/(خالي(ه)?|خال|منزوع(ه)?)\s*(من\s*)?الدسم/, 'خالي الدسم']];
   var ORIGIN_CATS = new Set([PRODUCE, CATS.indexOf('لحوم ودواجن')]);
-  function words(it) {                   // normalized words of the name without its size, with the original spelling
+  function words(it) {
     var l = label(it);
     if (it._w && it._wl === l) return it._w;
     it._wl = l;
     it._w = l.replace(SIZE_RE, ' ').replace(FIT_RE, ' ').replace(STAGE_RE, ' ').split(/[\s\-–—()[\]،,.+\/]+/).filter(Boolean).map(function (w) { return [norm(w), w]; });
     return it._w;
   }
-  function facetVals(it) {               // values of every filter for one pack (cached)
+  function facetVals(it) {
     if (it._fv && it._fv.l === label(it)) return it._fv;
     var l = label(it), n = norm(l), ws = words(it), fv = { l: l, color: [], origin: [] };
     var m = l.match(FIT_RE); fv.fit = m ? 'مقاس ' + m[1].replace(/\s+/g, '') : '';
@@ -605,7 +643,6 @@
     add('color', tally('color').sort(function (a, b) { return b[1] - a[1]; }));
     add('origin', tally('origin').sort(function (a, b) { return b[1] - a[1]; }));
     add('brand', tally('brand').filter(function (e) { return e[1] >= 2; }).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 14));
-    // kind: words shared by part of the packs (not the type, brand, colour, origin or fat — those have their own filter)
     var skip = new Set();
     toks(gname).forEach(function (w) { skip.add(w); skip.add(stripP(w)); });
     items.forEach(function (it) { if (it.brand) toks(it.brand).forEach(function (w) { skip.add(w); }); });
@@ -652,31 +689,35 @@
   function itemMatches(it, sel) { for (var k in sel) if (sel[k] != null && !valueMatch(it, k, sel[k])) return false; return true; }
   function valueLabel(key, v) { return key === 'kind' ? arText(kindLabels.get(v) || v) : key === 'fit' || key === 'stage' ? arText(v) : v; }
 
-  // ---------------------------------------------------------------- the products of one kind
+  // ---------------------------------------------------------------- every pack of one kind
   var tState = null;
   function openType(gi, focusId) {
     var g = GROUPS[gi]; if (!g) return;
-    tState = { gi: gi, items: [], facets: [], sel: {}, text: '', shown: 0, list: [], focus: focusId || null };
+    tState = { gi: gi, items: [], facets: [], sel: {}, sort: 'usual', text: '', shown: 0, list: [], focus: focusId || null };
     typeTitle.textContent = arText(g[0]);
-    typeSub.textContent = nProducts(g[3]) + ' · ' + (CATS[catOfGroup(gi)] || '');
-    typeTools.hidden = true; tq.value = ''; tFacets.innerHTML = '';
-    typeBody.innerHTML = '<p class="hint" style="padding:16px">جارٍ التحميل…</p>';
+    typeSub.textContent = nProducts(g[3]) + '، ' + (CATS[catOfGroup(gi)] || '');
+    typeTools.innerHTML = ''; typeTools.hidden = true;
+    typeBody.innerHTML = '<p class="loading">جارٍ التحميل…</p>';
     if (pType.hidden) openPage(pType);
     afterItems(function () {
       if (!tState || tState.gi !== gi) return;
-      tState.items = (groupItems[gi] || []).slice().sort(function (a, b) { return uscore(b) - uscore(a) || a.i - b.i; });
+      tState.items = sortedItems(gi);
       tState.facets = facetsFor(tState.items, g[0]).slice(0, 2);
-      tSearch.hidden = tState.items.length <= 15;
-      renderFacets(); renderType(true);
+      renderTools(); renderType(true);
     });
   }
   function typeFiltered() {
     var base = tState.items;
     if (tState.text) { var r = searchItems(base, tState.text); base = r ? r.map(function (x) { return x.it; }) : base; }
-    return base.filter(function (it) { return itemMatches(it, tState.sel); });
+    var list = base.filter(function (it) { return itemMatches(it, tState.sel); });
+    if (tState.sort === 'price') {
+      var pr = function (it) { var d = decide(it, 1); return (d.kind === 'S' || d.kind === 'TIE') && d.unit ? d.unit : Infinity; };
+      list = list.slice().sort(function (a, b) { return pr(a) - pr(b) || a.i - b.i; });
+    }
+    return list;
   }
-  function renderFacets() {
-    tFacets.innerHTML = '';
+  function renderTools() {
+    typeTools.innerHTML = '';
     tState.facets.forEach(function (f) {
       var row = document.createElement('div'); row.className = 'frow';
       var t = document.createElement('span'); t.className = 'f-t'; t.textContent = f.title + ':'; row.appendChild(t);
@@ -686,41 +727,73 @@
         c.setAttribute('aria-pressed', (tState.sel[f.key] == null ? v == null : tState.sel[f.key] === v) ? 'true' : 'false');
         row.appendChild(c);
       });
-      tFacets.appendChild(row);
+      typeTools.appendChild(row);
     });
-    typeTools.hidden = tSearch.hidden && !tState.facets.length;
+    if (tState.items.length > 3) {
+      var sr = document.createElement('div'); sr.className = 'frow';
+      sr.innerHTML = '<span class="f-t">الترتيب:</span><button type="button" class="chip" data-sort="usual">المعتاد أولًا</button><button type="button" class="chip" data-sort="price">الأقل سعرًا</button>';
+      sr.querySelectorAll('[data-sort]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.sort === tState.sort ? 'true' : 'false'); });
+      typeTools.appendChild(sr);
+    }
+    typeTools.hidden = !typeTools.children.length;
   }
   function renderType(reset) {
     if (reset) {
       tState.list = typeFiltered(); tState.shown = 0; typeBody.innerHTML = ''; typeBody.scrollTop = 0;
+      var info = document.createElement('p'); info.className = 'count-line';
+      var usualN = tState.list.filter(isUsual).length;
+      info.textContent = nProducts(tState.list.length) + (usualN && tState.sort === 'usual' ? '، ' + (usualN === 1 ? 'المعتاد في الأول' : ar(usualN) + ' من معتادكم في الأول') : '');
+      typeBody.appendChild(info);
       if (!tState.list.length) {
-        typeBody.innerHTML = '<div class="empty-box"><b>لا توجد منتجات بهذا الاختيار</b><div class="row"><button type="button" class="btn secondary" data-act="tclear">عرض الكل</button></div></div>';
-        return;
+        var e = document.createElement('div'); e.className = 'empty-box';
+        e.innerHTML = '<b>لا توجد منتجات بهذا الاختيار</b><div class="row"><button type="button" class="btn secondary" data-act="tclear">عرض الكل</button></div>';
+        typeBody.appendChild(e); return;
       }
+      var g = document.createElement('div'); g.className = 'grid'; typeBody.appendChild(g);
     }
-    var list = tState.list, end = Math.min(list.length, tState.shown + 50);
-    if (tState.focus) { var fi = list.findIndex(function (it) { return it.id === tState.focus; }); if (fi >= end) end = Math.min(list.length, fi + 8); }
+    var host = typeBody.querySelector('.grid'), list = tState.list, end = Math.min(list.length, tState.shown + 40);
+    if (tState.focus) { var fi = list.findIndex(function (it) { return it.id === tState.focus; }); if (fi >= end) end = Math.min(list.length, fi + 6); }
     var frag = document.createDocumentFragment();
-    for (var i = tState.shown; i < end; i++) frag.appendChild(pickRow(list[i], { tag: true }));
-    var old = typeBody.querySelector('.more-btn'); if (old) old.remove();
-    typeBody.appendChild(frag); tState.shown = end;
-    if (end < list.length) { var m = document.createElement('button'); m.type = 'button'; m.className = 'more-btn'; m.dataset.act = 'tmore'; m.textContent = 'عرض المزيد (' + ar(list.length - end) + ')'; typeBody.appendChild(m); }
+    for (var i = tState.shown; i < end; i++) frag.appendChild(card(list[i]));
+    host.appendChild(frag); tState.shown = end;
     if (reset && tState.focus) {
-      var el = typeBody.querySelector('.pick[data-id="' + cssId(tState.focus) + '"]');
-      if (el) try { el.scrollIntoView({ block: 'center' }); } catch (e) { }
+      var el = typeBody.querySelector('.card[data-id="' + cssId(tState.focus) + '"]');
+      if (el) try { el.scrollIntoView({ block: 'center' }); } catch (er) { }
       tState.focus = null;
     }
   }
-  tFacets.addEventListener('click', function (e) {
+  typeTools.addEventListener('click', function (e) {
     var c = e.target.closest('.chip'); if (!c || !tState) return;
+    if (c.dataset.sort) { tState.sort = c.dataset.sort; renderTools(); renderType(true); return; }
     var k = c.dataset.fk, v = c.dataset.fv;
     if (v == null || tState.sel[k] === v) delete tState.sel[k]; else tState.sel[k] = v;
-    renderFacets(); renderType(true);
+    renderTools(); renderType(true);
   });
-  var tqTimer = 0;
-  tq.addEventListener('input', function () { clearTimeout(tqTimer); tqTimer = setTimeout(function () { if (tState) { tState.text = tq.value.trim(); renderType(true); } }, 150); });
-  tq.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); tq.blur(); } });
-  typeBody.addEventListener('scroll', function () { if (tState && typeBody.querySelector('.more-btn') && typeBody.scrollTop + typeBody.clientHeight > typeBody.scrollHeight - 500) renderType(false); }, { passive: true });
+  typeBody.addEventListener('scroll', function () { if (tState && tState.shown < tState.list.length && typeBody.scrollTop + typeBody.clientHeight > typeBody.scrollHeight - 700) renderType(false); }, { passive: true });
+
+  // ================================================================== one product
+  var itemId = null;
+  function openItem(id) {
+    var it = byId.get(id); if (!it) return;
+    itemId = id; itCtrl.dataset.id = id;
+    var ss = splitSize(it), g = GROUPS[it.g], x = lineFor(it);
+    itImg.src = medUrl(it); itImg.alt = label(it);
+    itBadge.hidden = !isUsual(it);
+    itName.textContent = arText(ss.base); itSize.textContent = arText(ss.size);
+    var store = x.d.kind === 'S' ? 'يُشترى من ' + SHORT[x.d.s] + (x.d.unit ? '، ' + money(x.d.unit) : '، السعر غير متاح') + '. ' : x.d.kind === 'U' ? 'المتجر غير محدد. ' : '';
+    itStore.textContent = store + whyShort(x);
+    itCtrl.innerHTML = ctrlHTML(cart.get(id) || 0, true);
+    var inType = topPage() === pType && tState && tState.gi === it.g;
+    itMore.hidden = !g || g[3] < 2 || inType || it.hid;
+    if (!itMore.hidden) { itMore.textContent = 'كل ' + arText(g[0]) + ' (' + ar(g[3]) + ') مع الفرز ‹'; itMore.dataset.gi = it.g; itMore.dataset.focus = id; }
+    openPage(pItem);
+  }
+  itMore.addEventListener('click', function (e) {
+    e.stopPropagation();
+    var gi = +itMore.dataset.gi, focus = itMore.dataset.focus;
+    closeTop();
+    setTimeout(function () { openType(gi, focus); }, 0);
+  });
 
   // ================================================================== quantities
   function setQty(id, q) {
@@ -729,8 +802,7 @@
     if (q === prev) { if (q === MAX_QTY) toast('الحد الأقصى للكمية ' + ar(MAX_QTY)); return; }
     if (q) cart.set(id, q); else cart.delete(id);
     version++; saveCart(); refreshItem(id);
-    if (!pList.hidden) renderList();
-    // the card at the top keeps its place while she picks (a row must never jump under her finger)
+    if (!pCart.hidden) renderCart();
     updateBar(!prev && q > 0); schedulePdf();
   }
   document.addEventListener('click', function (ev) {
@@ -743,119 +815,178 @@
         setQty(id, act === 'add' ? 1 : act === 'inc' ? q + 1 : q - 1);
         return;
       }
-      if (act === 'expand') { expandSection(btn); return; }
       if (act === 'more') { searchLimit += 30; renderResults(); return; }
-      if (act === 'tmore') { renderType(false); return; }
-      if (act === 'tclear') { tState.sel = {}; tState.text = ''; tq.value = ''; renderFacets(); renderType(true); return; }
+      if (act === 'clearq') { qInput.value = ''; renderResults(); return; }
+      if (act === 'tclear') { tState.sel = {}; renderTools(); renderType(true); return; }
       if (act === 'hopen') { openHistory(); return; }
       if (act === 'hadd') { var hi = +btn.dataset.h; if (topPage() === pHist) closeTop(); afterItems(function () { addFromHistory(hi); }); return; }
-      if (act === 'bulk') { plan().U.forEach(function (x) { storeChoice[x.it.id] = btn.dataset.s; }); storeChanged(); toast('وُضعت في ' + SHORT[btn.dataset.s] + '. يمكن تغيير أي صنف منها.'); return; }
-      if (act === 'choose') { var cid = btn.closest('[data-id]').dataset.id; if (storeChoice[cid] === btn.dataset.s) delete storeChoice[cid]; else storeChoice[cid] = btn.dataset.s; storeChanged(); return; }
-      if (act === 'preview') { renderPreview(); openPage(previewEl); return; }
-      if (act === 'peritem') { perItem = !perItem; renderList(); return; }
+      if (act === 'bulk') {
+        var ids = (btn.dataset.ids || '').split('|').filter(Boolean);
+        ids.forEach(function (i) { storeChoice[i] = btn.dataset.s; });
+        storeChanged(); toast('وُضعت هذه الأصناف (' + ar(ids.length) + ') في ' + SHORT[btn.dataset.s] + ' فقط، ويمكن تغيير أي صنف منها.'); return;
+      }
+      if (act === 'choose') {
+        var cid = btn.closest('[data-id]').dataset.id;
+        if (!btn.dataset.s || storeChoice[cid] === btn.dataset.s) delete storeChoice[cid]; else storeChoice[cid] = btn.dataset.s;
+        storeChanged(); return;
+      }
       if (act === 'newlist') { newList(); return; }
+      if (act === 'find') { while (pages.length) closeTop(); setTimeout(function () { qInput.focus(); }, 50); return; }
       return;
     }
-    var sec = t.closest('[data-sec]'); if (sec) { openSection(+sec.dataset.sec); return; }
+    var sec = t.closest('[data-sec]');
+    if (sec) {
+      var ci = +sec.dataset.sec;
+      if (topPage() === pSections) { closeTop(); if (!pSec.hidden) { setTimeout(function () { openSection(ci, true); }, 0); return; } }
+      openSection(ci); return;
+    }
     var gl = t.closest('[data-g]'); if (gl) { openType(+gl.dataset.g); return; }
-    var pic = t.closest('.pic'); if (pic) { var hh = pic.closest('[data-id]'); if (hh) openViewer(hh.dataset.id); return; }
+    var pic = t.closest('.pic, .c-name'); if (pic) { var hh = pic.closest('[data-id]'); if (hh) openItem(hh.dataset.id); return; }
     if (t.closest('[data-close]')) { closeTop(); return; }
-    if (t === viewer) closeTop();
+    if (t.classList && t.classList.contains('sheet-wrap')) closeTop();
   });
-  function storeChanged() { writeJSON(LS_STORE, storeChoice); version++; if (!pList.hidden) renderList(); schedulePdf(); }
+  function storeChanged() { writeJSON(LS_STORE, storeChoice); version++; if (!pCart.hidden) renderCart(); schedulePdf(); }
 
-  // ================================================================== my list
-  var perItem = false;                         // the per-item store choice is shown only when she asks for it
-  function renderList() {
-    var top = listBody.scrollTop, n = cart.size;
-    listBody.innerHTML = '';
-    clearBtn.hidden = !n;
+  // ================================================================== the basket: by store, with honest totals
+  function lineEl(x, kind) {
+    var it = x.it, ss = splitSize(it), row = document.createElement('div');
+    row.className = 'line'; row.dataset.id = it.id;
+    row.innerHTML = '<button class="pic" type="button"><img alt="" loading="lazy" decoding="async"></button><div class="l-main">' +
+      '<p class="l-name"></p><p class="l-size"></p><div class="l-row"><div class="ctrl"></div><p class="l-price"></p></div><p class="l-why"></p></div>';
+    row.querySelector('img').src = thumbUrl(it);
+    row.querySelector('.pic').setAttribute('aria-label', 'تفاصيل ' + label(it));
+    row.querySelector('.l-name').textContent = arText(ss.base);
+    row.querySelector('.l-size').textContent = arText(ss.size);
+    row.querySelector('.ctrl').innerHTML = ctrlHTML(x.q);
+    var pr = row.querySelector('.l-price');
+    if (x.d.kind === 'S' && x.d.unit) pr.innerHTML = (x.q > 1 ? num3(x.d.unit) + ' × ' + ar(x.q) + ' = ' : '') + '<b>' + money(x.d.unit * x.q) + '</b>';
+    else if (x.d.kind === 'S') pr.textContent = 'السعر غير متاح';
+    else if (x.d.kind === 'U' && x.d.known) pr.textContent = SHORT[x.d.known.s] + ': ' + money(x.d.known.p * x.q);
+    var why = row.querySelector('.l-why'); why.textContent = whyShort(x, kind === 'U');
+    if (kind === 'R') why.classList.add('warn');
+    var main = row.querySelector('.l-main');
+    if (kind === 'U') {
+      var ch = document.createElement('div'); ch.className = 'choose';
+      ch.innerHTML = '<span>اشتري هذا الصنف من:</span><span class="seg"><button type="button" class="L" data-act="choose" data-s="L" aria-pressed="false">لولو</button><button type="button" class="T" data-act="choose" data-s="T" aria-pressed="false">طلبات مارت</button></span>';
+      main.appendChild(ch);
+    } else if (x.d.chosen) {
+      var cc = document.createElement('div'); cc.className = 'choose';
+      cc.innerHTML = '<span class="chosen-tag"></span><button type="button" class="link" data-act="choose" style="min-height:30px">إلغاء اختياري</button>';
+      cc.querySelector('.chosen-tag').textContent = 'اختيارك لهذا الصنف فقط';
+      main.appendChild(cc);
+    }
+    return row;
+  }
+  function storeBlock(code, title, sub, why, lines, kind) {
+    var box = document.createElement('section'); box.className = 'store';
+    var head = document.createElement('div'); head.className = 'store-h ' + code;
+    head.innerHTML = '<h3></h3><small></small>' + (why ? '<span class="why"></span>' : '');
+    head.querySelector('h3').textContent = title; head.querySelector('small').textContent = sub;
+    if (why) head.querySelector('.why').textContent = why;
+    box.appendChild(head);
+    var lastCat = null;
+    lines.forEach(function (x) {
+      if (x.it.cat !== lastCat) { lastCat = x.it.cat; var h = document.createElement('p'); h.className = 'cat-h'; h.textContent = CATS[lastCat] || ''; box.appendChild(h); }
+      box.appendChild(lineEl(x, kind));
+    });
+    return box;
+  }
+  function coverage(n, missing) {             // «للأصناف الخمسة» / «لـ ٣ من ٥ أصناف»
+    var priced = n - missing;
+    if (!missing) return n === 1 ? 'للصنف' : n === 2 ? 'للصنفين' : 'لكل الأصناف (' + ar(n) + ')';
+    return 'لـ ' + ar(priced) + ' من ' + nItems(n);
+  }
+  function renderCart() {
+    var top = cartBody.scrollTop, n = cart.size;
+    cartBody.innerHTML = ''; clearBtn.hidden = !n;
     if (!n) {
-      listSub.textContent = '';
-      listBody.innerHTML = '<div class="empty-box"><b>قائمتك فارغة</b>اضغطي + بجانب أي منتج لإضافته.<div class="row"><button type="button" class="btn primary" data-close>ابدئي الاختيار</button></div></div>';
-      if (history_().length) {
-        var hh = document.createElement('div'); hh.innerHTML = '<h3 class="head-h">أو ابدئي من قائمة سابقة</h3><div></div>'; listBody.appendChild(hh);
-        afterItems(function () { renderHistory(hh.lastChild); });
-      }
+      cartSub.textContent = '';
+      cartBody.innerHTML = '<div class="empty-box"><b>السلة فارغة</b>اضغطي + على أي منتج لإضافته.<div class="row"><button type="button" class="btn primary" data-close>تصفّح الأقسام</button></div></div>';
+      if (history_().length) { var hh = document.createElement('div'); hh.innerHTML = '<p class="head-title">أو ابدئي من قائمة سابقة</p><div></div>'; cartBody.appendChild(hh); afterItems(function () { renderHistory(hh.lastChild); }); }
       updateSend(); return;
     }
-    if (!cartKnown()) { listBody.innerHTML = '<p class="hint" style="padding:16px">جارٍ تحميل القائمة…</p>'; afterItems(function () { pruneCart(); if (!pList.hidden) renderList(); }); return; }
+    if (!cartKnown()) { cartBody.innerHTML = '<p class="loading">جارٍ تحميل السلة…</p>'; afterItems(function () { pruneCart(); if (!pCart.hidden) renderCart(); }); return; }
     var P = plan(), pieces = 0, frag = document.createDocumentFragment();
     cart.forEach(function (q) { pieces += q; });
-    listSub.textContent = nItems(n) + ' · ' + nPieces(pieces);
-    var ask = null;
-    if (P.U.length) {
-      ask = document.createElement('div'); ask.className = 'ask';
-      ask.innerHTML = '<b></b><p>سعرها غير متوفر في أحد المتجرين. اختاري لها متجرًا، أو اتركيها ليُحدَّد أثناء التسوق.</p>' +
-        '<div class="row"><button type="button" class="btn L" data-act="bulk" data-s="L">كلها من لولو</button><button type="button" class="btn T" data-act="bulk" data-s="T">كلها من طلبات مارت</button></div>' +
-        (perItem ? '' : '<button type="button" class="link" data-act="peritem">أو اختاري لكل صنف وحده</button>');
-      ask.querySelector('b').textContent = (P.U.length === 1 ? 'صنف واحد بلا متجر محدد' : P.U.length === 2 ? 'صنفان بلا متجر محدد' : nItems(P.U.length) + ' بلا متجر محدد') + ' — اختياري';
-    }
-    var lines = P.L.concat(P.T, P.U, P.R).sort(lineOrder), lastCat = null;
-    lines.forEach(function (x) {
-      if (x.it.cat !== lastCat) { lastCat = x.it.cat; var h = document.createElement('h3'); h.className = 'l-cat'; h.textContent = CATS[lastCat] || ''; frag.appendChild(h); }
-      var row = pickRow(x.it), meta = row.querySelector('.pk-meta');
-      if (x.d.kind === 'U' || x.d.chosen) {
-        // a quiet note on the row; the choice itself only when she asks for it
-        var wb = document.createElement('button'); wb.type = 'button'; wb.className = 'where-btn'; wb.dataset.act = 'peritem';
-        wb.textContent = x.d.chosen ? 'من ' + SHORT[x.d.s] + ' (اختيارك)' : 'المتجر غير محدد';
-        meta.appendChild(wb);
-        if (perItem) {
-          var w = document.createElement('div'); w.className = 'where';
-          w.innerHTML = '<span>المتجر:</span><span class="seg"><button type="button" class="L" data-act="choose" data-s="L">لولو</button><button type="button" class="T" data-act="choose" data-s="T">طلبات مارت</button></span>';
-          w.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', x.d.chosen && x.d.s === b.dataset.s ? 'true' : 'false'); });
-          row.appendChild(w);
-        }
-      } else if (x.d.kind === 'R') {
-        var wr = document.createElement('p'); wr.className = 'warn'; wr.textContent = 'غير متوفر في طلبات مارت — احذفيه أو اختاري بديلًا'; row.appendChild(wr);
-      }
-      frag.appendChild(row);
+    cartSub.textContent = nItems(n) + '، ' + nPieces(pieces);
+    // where everything goes, and exactly what the amount covers
+    var sum = document.createElement('div'); sum.className = 'c-summary';
+    var rows = '<p class="cs-title">توزيع السلة على المتجرين</p>';
+    ['T', 'L'].forEach(function (s) {
+      if (!P[s].length) return;
+      rows += '<div class="cs-line"><span><i class="dot ' + s + '"></i>' + SHORT[s] + ': ' + nItems(P[s].length) + '</span><b>' +
+        (P.total[s] ? money(P.total[s]) + (P.missing[s] ? ' <small>' + coverage(P[s].length, P.missing[s]) + '</small>' : '') : 'بلا سعر معروف') + '</b></div>';
     });
-    if (ask) frag.appendChild(ask);            // optional, so after the list rather than in front of it
-    // where the list goes, and what it costs
-    var sum = document.createElement('div'), rows = []; sum.className = 'summary';
-    if (P.L.length) rows.push(['L', 'من لولو', nItems(P.L.length) + (P.total.L ? ' · ' + money(P.total.L) : '')]);
-    if (P.T.length) rows.push(['T', 'من طلبات مارت', nItems(P.T.length) + (P.total.T ? ' · ' + money(P.total.T) : '')]);
-    if (P.U.length) rows.push(['U', 'متجر غير محدد', nItems(P.U.length)]);
-    if (P.R.length) rows.push(['U', 'تحتاج مراجعة', nItems(P.R.length)]);
-    sum.innerHTML = rows.map(function (r) { return '<div class="line"><span><i class="dot ' + r[0] + '"></i>' + r[1] + '</span><b>' + r[2] + '</b></div>'; }).join('') +
-      ((P.total.L + P.total.T) ? '<div class="line total"><span>المجموع التقريبي</span><b>' + money(P.total.L + P.total.T) + '</b></div>' : '') +
-      '<small>يصل الملف مقسّمًا حسب المتجر: الخضار والفواكه من طلبات مارت، والباقي من الأرخص' + (PRICE_DATE ? ' بحسب أسعار ' + priceDateText() : '') + '، دون التوصيل.</small>';
+    if (P.U.length) rows += '<div class="cs-line"><span><i class="dot U"></i>لم يُحدَّد المتجر: ' + nItems(P.U.length) + '</span><b>—</b></div>';
+    if (P.R.length) rows += '<div class="cs-line"><span><i class="dot R"></i>تحتاج مراجعة: ' + nItems(P.R.length) + '</span><b>—</b></div>';
+    var known = P.total.L + P.total.T;
+    rows += '<div class="cs-line cs-total"><span>' + (P.priced === P.lines ? 'المجموع' : 'المبلغ المعروف') + '</span><b class="amount">' + (known ? money(known) : '—') + '</b></div>';
+    var noPrice = P.lines - P.priced;
+    rows += '<p class="cs-note">' + (noPrice ? (P.priced ? 'يشمل ' + nItemsAcc(P.priced) + ' من ' + nItems(P.lines) + ' فقط؛ ' : 'لا يشمل أي صنف؛ ') + noPricePhrase(noPrice) + '، فالمجموع الفعلي أعلى.' :
+      'يشمل كل الأصناف (' + ar(P.lines) + ').') + (PRICE_DATE ? ' بحسب آخر أسعار محفوظة (' + priceDateText() + ')، دون التوصيل.' : '') + '</p>';
+    sum.innerHTML = rows;
     frag.appendChild(sum);
-    var links = document.createElement('div'); links.className = 'l-links';
-    links.innerHTML = '<button type="button" class="link" data-act="preview">معاينة الملف</button>' + (history_().length ? '<button type="button" class="link" data-act="hopen">القوائم السابقة</button>' : '');
+    ['T', 'L'].forEach(function (s) {
+      if (!P[s].length) return;
+      frag.appendChild(storeBlock(s, STORES[s], nItems(P[s].length) + (P.total[s] ? '، ' + money(P.total[s]) : ''), '', P[s], 'S'));
+      var box = frag.lastChild, ss = document.createElement('div'); ss.className = 'store-sum';
+      ss.innerHTML = '<span></span><b></b>';
+      ss.firstChild.textContent = 'مجموع ' + SHORT[s] + (P.missing[s] ? ' (لا يشمل ' + (P.missing[s] === 1 ? 'صنفًا سعره غير متاح' : P.missing[s] === 2 ? 'صنفين سعرهما غير متاح' : nItems(P.missing[s]) + ' سعرها غير متاح') + ')' : '');
+      ss.lastChild.textContent = P.total[s] ? money(P.total[s]) : '—';
+      box.appendChild(ss);
+    });
+    if (P.U.length) {
+      var ub = storeBlock('U', 'لم يُحدَّد المتجر', nItems(P.U.length), 'لا تكفي الأسعار لمعرفة الأرخص. اختاري المتجر، أو اتركيها فتصل في الملف تحت «بحاجة إلى تحديد المتجر».', P.U, 'U');
+      if (P.U.length > 1) {
+        var bulk = document.createElement('div'); bulk.className = 'bulk';
+        var ids = P.U.map(function (x) { return x.it.id; }).join('|');
+        bulk.innerHTML = '<span></span><div class="row"><button type="button" class="btn L" data-act="bulk" data-s="L">كلها من لولو</button><button type="button" class="btn T" data-act="bulk" data-s="T">كلها من طلبات مارت</button></div>';
+        bulk.firstChild.textContent = 'اختيار واحد يُطبَّق على هذه الأصناف (' + ar(P.U.length) + ') فقط، ويُحفظ لكلٍّ منها في القوائم القادمة:';
+        bulk.querySelectorAll('[data-act="bulk"]').forEach(function (b) { b.dataset.ids = ids; });
+        ub.insertBefore(bulk, ub.children[1]);
+      }
+      frag.appendChild(ub);
+    }
+    if (P.R.length) frag.appendChild(storeBlock('R', 'تحتاج مراجعة', nItems(P.R.length), 'خضار وفواكه من قائمة قديمة غير متوفرة في طلبات مارت.', P.R, 'R'));
+    var links = document.createElement('div'); links.className = 'cart-links';
+    if (history_().length) links.innerHTML = '<button type="button" class="link" data-act="hopen">القوائم السابقة</button>';
     frag.appendChild(links);
-    listBody.appendChild(frag);
-    listBody.scrollTop = top;
+    cartBody.appendChild(frag);
+    cartBody.scrollTop = top;
     updateSend();
   }
-  listBtn.addEventListener('click', function () { renderList(); openPage(pList); schedulePdf(0); });
+  cartBtn.addEventListener('click', function () { renderCart(); openPage(pCart); schedulePdf(0); });
   function clearList(msg) {
     var backup = new Map(cart), ids = Array.from(cart.keys());
-    cart.clear(); version++; saveCart(); ids.forEach(refreshItem); if (!pList.hidden) renderList(); renderIntro(); updateBar(); schedulePdf();
-    toast(msg, 'تراجع', function () { backup.forEach(function (q, id) { cart.set(id, q); }); version++; saveCart(); ids.forEach(refreshItem); if (!pList.hidden) renderList(); renderIntro(); updateBar(); schedulePdf(); });
+    cart.clear(); version++; saveCart(); ids.forEach(refreshItem); if (!pCart.hidden) renderCart(); renderHomeNotes(); updateBar(); schedulePdf();
+    toast(msg, 'تراجع', function () { backup.forEach(function (q, id) { cart.set(id, q); }); version++; saveCart(); ids.forEach(refreshItem); if (!pCart.hidden) renderCart(); renderHomeNotes(); updateBar(); schedulePdf(); });
   }
-  clearBtn.addEventListener('click', function () { if (cart.size && window.confirm('مسح كل المنتجات من القائمة؟')) clearList('مُسحت القائمة'); });
-  function newList() { if (cart.size) { clearList('بدأتِ قائمة جديدة. القائمة السابقة محفوظة في «القوائم السابقة».'); window.scrollTo(0, 0); } }
+  clearBtn.addEventListener('click', function () { if (cart.size && window.confirm('مسح كل المنتجات من السلة؟')) clearList('مُسحت السلة'); });
+  function newList() { if (cart.size) clearList('بدأتِ قائمة جديدة. القائمة السابقة محفوظة في «القوائم السابقة».'); }
   function updateBar(bump) {
     var n = cart.size;
-    listBtn.classList.toggle('empty', !n);
-    lbCount.textContent = ar(n);
-    if (!n) { lbTitle.textContent = 'قائمتي فارغة'; lbSub.textContent = 'اضغطي + بجانب ما تحتاجينه'; document.title = 'قائمة الجمعية'; }
-    else { lbTitle.textContent = 'قائمتي · ' + nItems(n); lbSub.textContent = 'راجعيها ثم أرسليها'; document.title = '(' + ar(n) + ') قائمة الجمعية'; }
-    listBtn.setAttribute('aria-label', n ? 'قائمتي، ' + nItems(n) + '. عرض وإرسال' : 'قائمتي فارغة');
-    if (bump) { listBtn.classList.remove('bump'); void listBtn.offsetWidth; listBtn.classList.add('bump'); }
+    cartBtn.classList.toggle('empty', !n);
+    cbCount.hidden = !n; cbCount.textContent = ar(n);
+    if (!n) { cbTitle.textContent = 'السلة فارغة'; cbSub.textContent = 'اضغطي + على أي منتج لإضافته'; document.title = 'قائمة الجمعية'; }
+    else { cbTitle.textContent = 'السلة: ' + nItems(n); cbSub.textContent = 'راجعي ثم أرسلي'; document.title = '(' + ar(n) + ') قائمة الجمعية'; }
+    cartBtn.setAttribute('aria-label', n ? 'السلة: ' + nItems(n) + '. مراجعة وإرسال' : 'السلة فارغة');
+    if (bump) { cartBtn.classList.remove('bump'); void cartBtn.offsetWidth; cartBtn.classList.add('bump'); }
   }
   function setSizes() {
     document.documentElement.style.setProperty('--bar-h', barEl.offsetHeight + 'px');
     document.documentElement.style.setProperty('--top-h', topEl.offsetHeight + 'px');
   }
 
-  // ================================================================== the PDF (prepared ahead of the tap, same decisions as the list)
+  // ================================================================== the PDF (prepared ahead of the tap, same decisions as the basket)
   var pdf = { status: 'empty', version: -1, result: null }, buildTimer = 0, building = false, again = false;
   function pdfDoc() {
     var P = plan();
-    function entry(x) { var ss = splitSize(x.it); return { name: ss.base, size: ss.size, qty: x.q, img: medUrl(x.it), unit: x.d.unit || null, total: x.d.unit ? x.d.unit * x.q : null }; }
+    function entry(x) {
+      var ss = splitSize(x.it);
+      // an undecided line shows the one price that is known, so the shopper can decide in the store
+      var hint = x.d.kind === 'U' && x.d.known ? SHORT[x.d.known.s] + ': ' + money(x.d.known.p * x.q) : '';
+      return { name: ss.base, size: ss.size, qty: x.q, img: medUrl(x.it), unit: x.d.unit || null, total: x.d.unit ? x.d.unit * x.q : null, hint: hint };
+    }
     function sections(lines) {
       var out = [], cur = null;
       lines.forEach(function (x) { if (!cur || cur.cat !== x.it.cat) { cur = { cat: x.it.cat, name: CATS[x.it.cat] || '', items: [] }; out.push(cur); } cur.items.push(entry(x)); });
@@ -864,7 +995,7 @@
     var stores = [];
     ['L', 'T'].forEach(function (s) { if (P[s].length) stores.push({ code: s, name: STORES[s], total: P.total[s], missing: P.missing[s], count: P[s].length, sections: sections(P[s]) }); });
     var extra = [];
-    if (P.U.length) extra.push({ code: 'U', name: 'بحاجة إلى تحديد المتجر', note: 'لم يُحسم متجرها: السعر غير متاح في أحد المتجرين أو لم يُوثَّق المتجر.', count: P.U.length, sections: sections(P.U) });
+    if (P.U.length) extra.push({ code: 'U', name: 'بحاجة إلى تحديد المتجر', note: 'لا تكفي الأسعار لمعرفة الأرخص: سعر أحد المتجرين غير متاح أو لم يُعرف متجره.', count: P.U.length, sections: sections(P.U) });
     if (P.R.length) extra.push({ code: 'R', name: 'تحتاج مراجعة', note: 'خضار وفواكه غير مدرجة في طلبات مارت.', count: P.R.length, sections: sections(P.R) });
     return { stores: stores, extra: extra, link: listUrl(P), priceNote: PRICE_DATE ? 'الأسعار بحسب آخر تحديث: ' + priceDateText(true) + ' — دون رسوم التوصيل' : '' };
   }
@@ -873,7 +1004,7 @@
     if (!cart.size) { pdf = { status: 'empty', version: version, result: null }; updateSend(); return; }
     if (!(pdf.status === 'ready' && pdf.version === version)) pdf.status = 'building';
     updateSend();
-    buildTimer = setTimeout(runBuild, delay != null ? delay : pList.hidden ? 1500 : 250);     // while choosing, wait for a pause
+    buildTimer = setTimeout(runBuild, delay != null ? delay : pCart.hidden ? 1500 : 250);
   }
   function runBuild() {
     if (building) { again = true; return; }
@@ -906,10 +1037,9 @@
     SHARE = shareSupport();
     var n = cart.size, ready = isReady(), error = n > 0 && pdf.status === 'error' && pdf.version === version, busy = n > 0 && !ready && !error;
     var useShare = SHARE === 'yes' && !shareFailed;
-    sendBtn.hidden = !n;
     sendBtn.disabled = !(ready || error); sendBtn.classList.toggle('busy', busy);
-    sendLabel.textContent = busy ? 'جارٍ تجهيز القائمة…' : error ? 'تعذّر التجهيز — اضغطي للمحاولة' : useShare ? 'إرسال القائمة' : 'تنزيل القائمة (PDF)';
-    sendBtn.classList.toggle('download', !useShare);
+    sendLabel.textContent = !n ? 'السلة فارغة' : busy ? 'جارٍ تجهيز الملف…' : error ? 'تعذّر التجهيز — أعيدي المحاولة' : useShare ? 'إرسال القائمة' : 'تنزيل القائمة (PDF)';
+    previewBtn.disabled = !n;
     var note = !n ? '' : SHARE === 'insecure' ? 'الإرسال المباشر يحتاج رابطًا يبدأ بـ https. نزّلي الملف ثم أرسليه من واتساب.' :
       SHARE === 'no' ? 'هذا المتصفح لا يرسل الملفات مباشرة: نزّلي الملف ثم أرسليه من واتساب.' :
       shareFailed ? 'تعذّر فتح الإرسال. نزّلي الملف ثم أرسليه من واتساب.' : '';
@@ -920,9 +1050,10 @@
     if (!isReady() || sharing) return;
     if (SHARE !== 'yes' || shareFailed) { downloadPdf(); return; }
     var file = pdf.result.file, data = { files: [file], title: 'قائمة المشتريات', text: shareText(plan()) }, p;
+    window.__lastShared = { version: pdf.version, name: file.name, size: file.size };       // for tests: what was handed to the share sheet
     try { if (navigator.canShare && !navigator.canShare(data)) data = { files: [file] }; sharing = true; p = navigator.share(data); }
     catch (err) { sharing = false; shareFailed = true; updateSend(); return; }
-    Promise.resolve(p).then(function () { saveHistory(); renderIntro(); toast('أُرسلت القائمة ✓'); }, function (err) {
+    Promise.resolve(p).then(function () { saveHistory(); renderHomeNotes(); toast('أُرسلت القائمة ✓'); }, function (err) {
       var nm = err && err.name; if (nm === 'AbortError' || nm === 'InvalidStateError') return; shareFailed = true; updateSend();
     }).then(function () { sharing = false; });
   });
@@ -930,32 +1061,31 @@
     var res = pdf.result, url = URL.createObjectURL(res.blob), a = document.createElement('a');
     a.href = url; a.download = res.name; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
-    saveHistory(); renderIntro();
+    saveHistory(); renderHomeNotes();
     toast('نُزّل الملف: ' + res.name);
   }
   function clearPreview() { pvPages.querySelectorAll('img').forEach(function (im) { URL.revokeObjectURL(im.src); }); pvPages.innerHTML = ''; }
   function renderPreview() {
     clearPreview();
-    if (!isReady()) { pvInfo.textContent = cart.size ? 'جارٍ تجهيز الملف…' : 'القائمة فارغة'; if (cart.size) schedulePdf(0); return; }
+    if (!isReady()) { pvInfo.textContent = cart.size ? 'جارٍ تجهيز الملف…' : 'السلة فارغة'; if (cart.size) schedulePdf(0); return; }
     var res = pdf.result, kb = Math.max(1, Math.round(res.blob.size / 1024));
-    pvInfo.textContent = countOf(res.pageCount, 'صفحة واحدة', 'صفحتان', 'صفحات', 'صفحة') + ' · ' + (kb >= 1024 ? ar((kb / 1024).toFixed(1)).replace('.', '٫') + ' ميجابايت' : ar(kb) + ' كيلوبايت');
+    pvInfo.textContent = countOf(res.pageCount, 'صفحة واحدة', 'صفحتان', 'صفحات', 'صفحة') + '، ' + (kb >= 1024 ? ar((kb / 1024).toFixed(1)).replace('.', '٫') + ' ميجابايت' : ar(kb) + ' كيلوبايت');
     res.pages.forEach(function (b, i) { var im = document.createElement('img'); im.alt = 'الصفحة ' + ar(i + 1); im.src = URL.createObjectURL(b); pvPages.appendChild(im); });
   }
+  previewBtn.addEventListener('click', function () { renderPreview(); openPage(previewEl); });
 
-  // ================================================================== pages + the back button (the main screen keeps its place underneath)
+  // ================================================================== pages + the back button (the home keeps its place underneath)
   var pages = [], skipPop = 0, quiet = new Set();
-  function pagesOpen() { return pages.length > 0; }
   function topPage() { return pages[pages.length - 1] || null; }
-  function syncBar() {                         // «قائمتي» stays at hand while browsing; the list, photo and file pages have their own buttons
+  function syncBar() {                         // the basket bar stays at hand while browsing
     var t = topPage(), browse = t === pSec || t === pType;
     barEl.hidden = !!t && !browse;
     barEl.classList.toggle('over', browse);
   }
-  // quiet: a page that is the site itself (the checklist opened from a link) adds no back-button step
   function openPage(el, isQuiet) {
     if (pages.indexOf(el) >= 0) return;
     pages.push(el);
-    el.style.zIndex = String(el === viewer ? 60 : 40 + pages.length);
+    el.style.zIndex = String(el.classList.contains('sheet-wrap') ? 60 + pages.length : 40 + pages.length);
     el.hidden = false; document.body.style.overflow = 'hidden'; document.body.classList.add('paged');
     if (isQuiet) quiet.add(el); else try { history.pushState({ jamiya: pages.length }, ''); } catch (e) { }
     var f = el.querySelector('[data-close]'); if (f) try { f.focus({ preventScroll: true }); } catch (e) { }
@@ -966,50 +1096,29 @@
     if (quiet.delete(el)) fromPop = true;
     el.hidden = true;
     if (!pages.length) { document.body.style.overflow = ''; document.body.classList.remove('paged'); }
-    if (el === viewer) viewerId = null;
+    if (el === pItem) itemId = null;
     if (el === previewEl) clearPreview();
     if (el === shopEl) { shopList = null; closeShopLink(); }
     if (el === pType) { tState = null; typeBody.innerHTML = ''; }
+    if (el === pSec) { secState = null; if (secIO) secIO.disconnect(); secBody.innerHTML = ''; }
     syncBar();
     if (!fromPop) { skipPop++; try { history.back(); } catch (e) { skipPop--; } }
   }
   window.addEventListener('popstate', function () { if (skipPop) { skipPop--; return; } if (pages.length) closeTop(true); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && pages.length) closeTop(); });
 
-  // ================================================================== one product's photo, with where it will be bought
-  var viewerId = null;
-  function openViewer(id) {
-    var it = byId.get(id); if (!it) return;
-    viewerId = id; vCtrl.dataset.id = id;
-    var ss = splitSize(it), g = GROUPS[it.g], x = lineFor(it);
-    vImg.src = medUrl(it); vImg.alt = label(it);
-    vName.textContent = arText(ss.base); vSize.textContent = arText(ss.size);
-    vStore.textContent = (x.d.kind === 'S' ? 'يُشترى من ' + SHORT[x.d.s] + (x.d.unit ? ' · ' + money(x.d.unit) : '') + '. ' : x.d.kind === 'U' ? 'المتجر غير محدد. ' : '') + reasonText(x);
-    vCtrl.innerHTML = ctrlHTML(cart.get(id) || 0, true);
-    var inType = topPage() === pType && tState && tState.gi === it.g;
-    vMore.hidden = !g || g[3] < 2 || inType || it.hid;
-    if (!vMore.hidden) { vMore.textContent = 'كل منتجات «' + arText(g[0]) + '» (' + ar(g[3]) + ')'; vMore.dataset.gi = it.g; vMore.dataset.focus = id; }
-    openPage(viewer);
-  }
-  vMore.addEventListener('click', function (e) {
-    e.stopPropagation();
-    var gi = +vMore.dataset.gi, focus = vMore.dataset.focus;
-    closeTop();
-    setTimeout(function () { openType(gi, focus); }, 0);
-  });
-
   // ================================================================== toast
   var toastTimer = 0;
   function toast(msg, actLabel, action) {
     toastEl.innerHTML = ''; var s = document.createElement('span'); s.textContent = msg; toastEl.appendChild(s);
     if (actLabel) { var b = document.createElement('button'); b.type = 'button'; b.textContent = actLabel; b.addEventListener('click', function () { toastEl.hidden = true; action(); }); toastEl.appendChild(b); }
-    toastEl.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(function () { toastEl.hidden = true; }, actLabel ? 6000 : 3000);
+    toastEl.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(function () { toastEl.hidden = true; }, actLabel ? 6000 : 3200);
   }
 
   // ================================================================== other tabs of the same phone
   window.addEventListener('storage', function (e) {
-    if (e.key === LS_CART) { var before = Array.from(cart.keys()); if (loadCart()) saveCart(); version++; before.concat(Array.from(cart.keys())).forEach(refreshItem); if (!pList.hidden) renderList(); renderIntro(); updateBar(); schedulePdf(); }
-    else if (e.key === LS_STORE) { storeChoice = readJSON(LS_STORE, {}) || {}; version++; if (!pList.hidden) renderList(); schedulePdf(); }
+    if (e.key === LS_CART) { var before = Array.from(cart.keys()); if (loadCart()) saveCart(); version++; before.concat(Array.from(cart.keys())).forEach(refreshItem); if (!pCart.hidden) renderCart(); renderHomeNotes(); updateBar(); schedulePdf(); }
+    else if (e.key === LS_STORE) { storeChoice = readJSON(LS_STORE, {}) || {}; version++; if (!pCart.hidden) renderCart(); schedulePdf(); }
   });
 
   // ================================================================== the shared list as a link: a checklist for whoever does the shopping
@@ -1035,8 +1144,8 @@
   }
   function shareText(P) {
     var n = P.L.length + P.T.length + P.U.length + P.R.length, rows = ['قائمة المشتريات — ' + nItems(n)];
-    if (P.L.length) rows.push('لولو: ' + nItems(P.L.length) + (P.total.L ? ' · ' + money(P.total.L) : ''));
-    if (P.T.length) rows.push('طلبات مارت: ' + nItems(P.T.length) + (P.total.T ? ' · ' + money(P.total.T) : ''));
+    if (P.L.length) rows.push('لولو: ' + nItems(P.L.length) + (P.total.L ? '، ' + money(P.total.L) + (P.missing.L ? ' ' + coverage(P.L.length, P.missing.L) : '') : ''));
+    if (P.T.length) rows.push('طلبات مارت: ' + nItems(P.T.length) + (P.total.T ? '، ' + money(P.total.T) + (P.missing.T ? ' ' + coverage(P.T.length, P.missing.T) : '') : ''));
     if (P.U.length) rows.push('بحاجة إلى تحديد المتجر: ' + nItems(P.U.length));
     if (P.R.length) rows.push('تحتاج مراجعة: ' + nItems(P.R.length));
     var url = listUrl(P);
@@ -1053,7 +1162,7 @@
     var all = readJSON(LS_TICKS, {}) || {};
     all[shopList.key] = { t: Date.now(), done: Array.from(ticks) };
     var keys = Object.keys(all).sort(function (a, b) { return (all[b].t || 0) - (all[a].t || 0); });
-    keys.slice(8).forEach(function (k) { delete all[k]; });        // keep the last few lists only
+    keys.slice(8).forEach(function (k) { delete all[k]; });
     writeJSON(LS_TICKS, all);
   }
   function shopProgress() {
@@ -1064,11 +1173,8 @@
   }
   function openShop(list) {
     shopList = list; ticks = loadTicks(list.key);
-    try {
-      var d = new Date(list.t);
-      shopSub.textContent = 'أُرسلت ' + dayText(d) + '، ' + new Intl.DateTimeFormat('ar-KW-u-nu-arab', { hour: 'numeric', minute: '2-digit' }).format(d);
-    } catch (e) { shopSub.textContent = ''; }
-    shopBody.innerHTML = '<p class="hint" style="padding:16px">جارٍ تحميل القائمة…</p>';
+    try { var d = new Date(list.t); shopSub.textContent = 'أُرسلت ' + dayText(d) + '، ' + new Intl.DateTimeFormat('ar-KW-u-nu-arab', { hour: 'numeric', minute: '2-digit' }).format(d); } catch (e) { shopSub.textContent = ''; }
+    shopBody.innerHTML = '<p class="loading">جارٍ تحميل القائمة…</p>';
     shopProgress();
     openPage(shopEl, true);
     afterItems(renderShop);
@@ -1086,13 +1192,13 @@
       var total = 0, missing = 0;
       if (s === 'L' || s === 'T') lines.forEach(function (x) { var p = offer(x.it, s); if (p > 0) total += p * x.q; else missing++; });
       var head = document.createElement('div'); head.className = 'store-h ' + s;
-      head.innerHTML = '<span></span><small></small>';
+      head.innerHTML = '<h3></h3><small></small>';
       head.firstChild.textContent = titles[s];
-      head.lastChild.textContent = nItems(lines.length) + (total ? ' · ' + money(total) + (missing ? ' + ' + countOf(missing, 'صنف', 'صنفان', 'أصناف', 'صنفًا') + ' بلا سعر' : '') : '');
+      head.lastChild.textContent = nItems(lines.length) + (total ? '، ' + money(total) + (missing ? ' ' + coverage(lines.length, missing) : '') : '');
       frag.appendChild(head);
       var lastCat = null;
       lines.forEach(function (x) {
-        if (x.it.cat !== lastCat) { lastCat = x.it.cat; var h = document.createElement('h3'); h.className = 'l-cat'; h.textContent = CATS[lastCat] || ''; frag.appendChild(h); }
+        if (x.it.cat !== lastCat) { lastCat = x.it.cat; var h = document.createElement('p'); h.className = 'cat-h'; h.textContent = CATS[lastCat] || ''; frag.appendChild(h); }
         var ss = splitSize(x.it), row = document.createElement('div');
         row.className = 'srow' + (ticks.has(x.it.id) ? ' done' : ''); row.dataset.sid = x.it.id; row.setAttribute('role', 'checkbox');
         row.setAttribute('aria-checked', ticks.has(x.it.id) ? 'true' : 'false'); row.tabIndex = 0;
@@ -1122,10 +1228,7 @@
   }
   shopBody.addEventListener('click', function (e) { var row = e.target.closest('.srow'); if (row) toggleTick(row); });
   shopBody.addEventListener('keydown', function (e) { if ((e.key === ' ' || e.key === 'Enter') && e.target.classList.contains('srow')) { e.preventDefault(); toggleTick(e.target); } });
-  shopHide.addEventListener('click', function () {
-    var on = !shopEl.classList.contains('hide-done');
-    shopEl.classList.toggle('hide-done', on); shopHide.textContent = on ? 'إظهار ما تم' : 'إخفاء ما تم';
-  });
+  shopHide.addEventListener('click', function () { var on = !shopEl.classList.contains('hide-done'); shopEl.classList.toggle('hide-done', on); shopHide.textContent = on ? 'إظهار ما تم' : 'إخفاء ما تم'; });
   function closeShopLink() { if (location.hash) try { history.replaceState(history.state, '', location.pathname + location.search); } catch (e) { } }
 
   // ---------------------------------------------------------------- earlier lists (saved when a list is sent)
@@ -1139,7 +1242,7 @@
   function renderHistory(host) {
     host.innerHTML = '';
     var h = history_();
-    if (!h.length) { host.innerHTML = '<p class="hint" style="padding:16px">لا توجد قوائم سابقة بعد. تُحفظ القائمة هنا تلقائيًا عند إرسالها.</p>'; return; }
+    if (!h.length) { host.innerHTML = '<p class="loading">لا توجد قوائم سابقة بعد. تُحفظ القائمة هنا تلقائيًا عند إرسالها.</p>'; return; }
     h.forEach(function (x, i) {
       var ids = Object.keys(x.items || {}), known = ids.filter(function (id) { return byId.has(canonical(id)); });
       var row = document.createElement('div'); row.className = 'hrow';
@@ -1160,9 +1263,9 @@
       cart.set(id, q); added++;
     });
     version++; saveCart(); cart.forEach(function (q, id) { refreshItem(id); });
-    renderIntro(); updateBar(added > 0); schedulePdf();
-    if (!pList.hidden) renderList();
-    toast(added ? 'أُضيف ' + nItems(added) + ' من القائمة السابقة' + (kept ? '، و' + nItems(kept) + ' كان في قائمتك' : '') : 'كل أصناف القائمة السابقة موجودة في قائمتك');
+    renderHomeNotes(); updateBar(added > 0); schedulePdf();
+    if (!pCart.hidden) renderCart();
+    toast(added ? 'أُضيف ' + nItems(added) + ' من القائمة السابقة' + (kept ? '، و' + nItems(kept) + ' كان في السلة' : '') : 'كل أصناف القائمة السابقة موجودة في السلة');
   }
   function openHistory() { afterItems(function () { renderHistory(histBody); openPage(pHist); }); }
 
@@ -1181,25 +1284,21 @@
   var sharedList = parseList(location.hash);
   if (sharedList) openShop(sharedList);
   window.addEventListener('hashchange', function () { var l = parseList(location.hash); if (l && pages.indexOf(shopEl) < 0) openShop(l); });
-  setTimeout(loadItems, 300);
-  afterItems(function () {
-    pruneCart(); version++; computeSent();
-    var key = usualList().map(function (it) { return it.id; }).sort().join(',');
-    if (key !== homeKey && !qInput.value.trim()) { var y = window.scrollY; renderHome(); window.scrollTo(0, y); }   // products added from lists sent on this phone
-    updateBar(); schedulePdf(); if (!pList.hidden) renderList(); warmSearch();
-  });
+  setTimeout(loadItems, 200);
+  afterItems(function () { pruneCart(); version++; computeSent(); updateBar(); schedulePdf(); if (!pCart.hidden) renderCart(); warmSearch(); });
 
   // small hook used by automated tests
   window.__jamiya = {
     state: function () { var o = {}; cart.forEach(function (q, id) { o[id] = q; }); return { version: version, pdfStatus: pdf.status, ready: isReady(), share: SHARE, cart: o, itemsLoaded: itemsLoaded }; },
-    plan: function () { var P = plan(), f = function (x) { return { id: x.it.id, name: label(x.it), q: x.q, kind: x.d.kind, store: x.d.s || null, unit: x.d.unit || null, why: x.d.why || null, reason: reasonText(x) }; };
-      return { L: P.L.map(f), T: P.T.map(f), U: P.U.map(f), R: P.R.map(f), total: P.total }; },
+    plan: function () { var P = plan(), f = function (x) { return { id: x.it.id, name: label(x.it), q: x.q, kind: x.d.kind, store: x.d.s || null, unit: x.d.unit || null, why: x.d.why || null, reason: whyShort(x) }; };
+      return { L: P.L.map(f), T: P.T.map(f), U: P.U.map(f), R: P.R.map(f), total: P.total, missing: P.missing, priced: P.priced, lines: P.lines }; },
     pdf: function () { return pdf.result; }, pdfDoc: pdfDoc, setQty: setQty,
     openGroup: function (name) { for (var i = 0; i < GROUPS.length; i++) if (GROUPS[i][0] === name) { openType(i); return i; } return -1; },
+    openSection: function (name) { var i = CATS.indexOf(name); if (i >= 0) openSection(i); return i; },
     item: function (id) { return byId.get(id); }, items: function () { return ITEMS.length; }, groups: function () { return GROUPS.length; },
     find: function (pred) { return ITEMS.filter(pred).slice(0, 50).map(function (it) { return { id: it.id, name: it.name, off: it.off, cat: it.cat, u: it.u }; }); },
     listUrl: function () { return listUrl(plan()); }, shareText: function () { return shareText(plan()); }, openList: function (h) { var l = parseList(h); if (l) openShop(l); return !!l; },
-    history: history_, saveHistory: saveHistory, usual: function () { return usualList().length; },
+    history: history_, saveHistory: saveHistory,
     search: function (q) { return (searchItems(ITEMS, q) || []).slice(0, 10).map(function (r) { return label(r.it); }); },
     hidden: function () { var o = []; byId.forEach(function (it) { if (it.hid) o.push({ id: it.id, name: it.name }); }); return o.slice(0, 50); }
   };
