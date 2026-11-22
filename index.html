@@ -13,157 +13,135 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="قائمة الجمعية">
-<link rel="stylesheet" href="app.css?v=ebc85b1658">
+<link rel="stylesheet" href="app.css?v=1a94ca584c">
 </head>
 <body>
-<!-- Top: search + sections (stay on screen while scrolling) -->
+<!-- The main screen: search on top, then the products this home usually buys, each with its own + -->
 <header class="top" id="top">
-  <div class="top-row">
-    <label class="search">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.06l4.24 4.24-1.4 1.4-4.24-4.24A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
-      <input id="q" type="search" placeholder="ابحث: حليب، عنب، نوتيلا ٤٠٠ غ" autocomplete="off" enterkeyhint="search" aria-label="بحث عن منتج">
-      <button id="qClear" class="q-clear" type="button" aria-label="مسح البحث" hidden>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
-      </button>
-    </label>
-  </div>
-  <nav id="tabs" class="tabs" aria-label="الأقسام"></nav>
-  <nav id="heads" class="subtabs" aria-label="أقسام فرعية" hidden></nav>
+  <label class="search">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.06l4.24 4.24-1.4 1.4-4.24-4.24A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
+    <input id="q" type="search" placeholder="ابحثي عن أي منتج" autocomplete="off" enterkeyhint="search" aria-label="بحث عن منتج">
+    <button id="qClear" class="q-clear" type="button" aria-label="مسح البحث" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
+    </button>
+  </label>
+  <nav id="jump" class="jump" aria-label="انتقلي إلى قسم"></nav>
 </header>
 
-<main id="view" aria-live="polite"></main>
-<div class="spacer" aria-hidden="true"></div>
+<main id="home" class="home"></main>
+<main id="results" class="results" aria-live="polite" hidden></main>
 
-<!-- Bottom: the basket, always one tap away -->
+<!-- My list, always one tap away -->
 <footer class="bar" id="bar">
-  <button id="cartBtn" class="cart-btn" type="button" aria-haspopup="dialog">
-    <span class="cart-ico" aria-hidden="true">
-      <svg viewBox="0 0 24 24"><path d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM5.2 4l.4 2H20l-2.3 8.1a2 2 0 0 1-1.9 1.4H8.4a2 2 0 0 1-2-1.6L4.4 4H2V2h4l-.8 2Z"/></svg>
-      <b id="cartCount" class="cart-count" hidden></b>
-    </span>
-    <span class="cart-text"><span id="cartLine1">السلة فارغة</span><small id="cartLine2">اختر المنتجات ثم راجع السلة وشاركها</small></span>
-    <span class="cart-go" aria-hidden="true">‹</span>
+  <button id="listBtn" class="list-btn empty" type="button">
+    <span id="lbCount" class="lb-count" aria-hidden="true">٠</span>
+    <span class="lb-text"><b id="lbTitle">قائمتي فارغة</b><small id="lbSub">اضغطي + على ما تحتاجينه</small></span>
+    <span id="lbGo" class="lb-go">عرض وإرسال ‹</span>
   </button>
 </footer>
 
-<!-- Packs of one type (e.g. all grapes): filters + every pack with its own quantity -->
-<section id="gsheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="gTitle" hidden>
-  <div class="sheet-head">
-    <button class="icon-btn" type="button" data-close aria-label="رجوع">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5 15.6 12l-7 7-1.4-1.4 5.6-5.6-5.6-5.6L8.6 5Z"/></svg>
+<!-- My list: quantities, then one button sends it -->
+<section id="pList" class="page" role="dialog" aria-modal="true" aria-labelledby="listTitle" hidden>
+  <div class="page-head">
+    <button class="back" type="button" data-close aria-label="رجوع">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5 15.6 12l-7 7-1.4-1.4 5.6-5.6-5.6-5.6L8.6 5Z"/></svg><span>رجوع</span>
     </button>
-    <div class="sheet-title"><h2 id="gTitle"></h2><p id="gSub" class="sub"></p></div>
+    <div class="page-title"><h2 id="listTitle">قائمتي</h2><p id="listSub" class="sub"></p></div>
+    <button id="clearBtn" class="text-btn danger" type="button">مسح الكل</button>
   </div>
-  <div id="gTools" class="gtools">
-    <label class="search small" id="gSearchBox" hidden>
+  <div id="listBody" class="page-body"></div>
+  <div class="page-foot">
+    <p id="sendNote" class="send-note" hidden></p>
+    <button id="sendBtn" class="send" type="button" disabled>
+      <span class="spin" aria-hidden="true"></span>
+      <svg class="send-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12.6 2-12.6 2v6.4Z"/></svg>
+      <span id="sendLabel">إرسال القائمة</span>
+    </button>
+  </div>
+</section>
+
+<!-- Browsing beyond the usual products: one section, then the products of one kind -->
+<section id="pSec" class="page" role="dialog" aria-modal="true" aria-labelledby="secTitle" hidden>
+  <div class="page-head">
+    <button class="back" type="button" data-close aria-label="رجوع">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5 15.6 12l-7 7-1.4-1.4 5.6-5.6-5.6-5.6L8.6 5Z"/></svg><span>رجوع</span>
+    </button>
+    <div class="page-title"><h2 id="secTitle"></h2><p id="secSub" class="sub"></p></div>
+  </div>
+  <div id="secBody" class="page-body"></div>
+</section>
+
+<section id="pType" class="page" role="dialog" aria-modal="true" aria-labelledby="typeTitle" hidden>
+  <div class="page-head">
+    <button class="back" type="button" data-close aria-label="رجوع">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5 15.6 12l-7 7-1.4-1.4 5.6-5.6-5.6-5.6L8.6 5Z"/></svg><span>رجوع</span>
+    </button>
+    <div class="page-title"><h2 id="typeTitle"></h2><p id="typeSub" class="sub"></p></div>
+  </div>
+  <div id="typeTools" class="tools" hidden>
+    <label class="search small" id="tSearch" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.06l4.24 4.24-1.4 1.4-4.24-4.24A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
-      <input id="gq" type="search" placeholder="ابحث داخل هذا النوع" autocomplete="off" enterkeyhint="search" aria-label="بحث داخل النوع">
+      <input id="tq" type="search" placeholder="ابحثي هنا" autocomplete="off" enterkeyhint="search" aria-label="بحث في هذه المنتجات">
     </label>
-    <div id="gFilterBar" class="fbar"></div>
+    <div id="tFacets"></div>
   </div>
-  <div id="gList" class="sheet-body"></div>
+  <div id="typeBody" class="page-body"></div>
 </section>
 
-<!-- Filter panel of the open type -->
-<section id="fpanel" class="panel" role="dialog" aria-modal="true" aria-labelledby="fTitle" hidden>
-  <div class="panel-card">
-    <div class="sheet-head">
-      <button class="icon-btn" type="button" data-close aria-label="إغلاق">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
-      </button>
-      <div class="sheet-title"><h2 id="fTitle">تصفية</h2></div>
-      <button id="fClear" class="text-btn" type="button">مسح الكل</button>
-    </div>
-    <div id="fBody" class="panel-body"></div>
-    <div class="sheet-foot"><button id="fApply" class="primary" type="button">عرض النتائج</button></div>
-  </div>
-</section>
-
-<!-- Basket review: split by store, then by section -->
-<section id="cart" class="sheet" role="dialog" aria-modal="true" aria-labelledby="cartTitle" hidden>
-  <div class="sheet-head">
-    <button class="icon-btn" type="button" data-close aria-label="رجوع">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5 15.6 12l-7 7-1.4-1.4 5.6-5.6-5.6-5.6L8.6 5Z"/></svg>
+<!-- Lists sent before (kept on this phone) -->
+<section id="pHist" class="page" role="dialog" aria-modal="true" aria-labelledby="histTitle" hidden>
+  <div class="page-head">
+    <button class="back" type="button" data-close aria-label="رجوع">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5 15.6 12l-7 7-1.4-1.4 5.6-5.6-5.6-5.6L8.6 5Z"/></svg><span>رجوع</span>
     </button>
-    <div class="sheet-title"><h2 id="cartTitle">السلة</h2><p id="cartSub" class="sub"></p></div>
-    <button id="clearBtn" class="text-btn danger" type="button">مسح</button>
+    <div class="page-title"><h2 id="histTitle">القوائم السابقة</h2><p class="sub">أضيفي قائمة سابقة ثم عدّليها</p></div>
   </div>
-  <div id="cartBody" class="sheet-body"></div>
-  <div class="sheet-foot cart-foot">
-    <p id="barNote" class="bar-note" hidden></p>
-    <div class="foot-row">
-      <button id="previewBtn" class="secondary" type="button">معاينة الملف</button>
-      <button id="shareBtn" class="primary share" type="button" disabled>
-        <span class="spin" aria-hidden="true"></span>
-        <span id="shareLabel">مشاركة القائمة</span>
-      </button>
-      <button id="downloadBtn" class="primary" type="button" hidden disabled>تنزيل PDF</button>
-    </div>
-  </div>
+  <div id="histBody" class="page-body"></div>
 </section>
 
-<!-- Photo viewer -->
-<section id="viewer" class="viewer" role="dialog" aria-modal="true" aria-labelledby="vName" hidden>
-  <div class="viewer-head">
-    <button class="icon-btn" type="button" data-close aria-label="إغلاق">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
+<!-- The file that will be sent -->
+<section id="preview" class="page" role="dialog" aria-modal="true" aria-labelledby="pvTitle" hidden>
+  <div class="page-head">
+    <button class="back" type="button" data-close aria-label="رجوع">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5 15.6 12l-7 7-1.4-1.4 5.6-5.6-5.6-5.6L8.6 5Z"/></svg><span>رجوع</span>
     </button>
-    <span id="vGroupName" class="v-group"></span>
+    <div class="page-title"><h2 id="pvTitle">الملف الذي سيُرسل</h2><p id="pvInfo" class="sub"></p></div>
   </div>
-  <div class="viewer-img" id="vImgBox"><img id="vImg" alt=""></div>
-  <div class="viewer-info">
-    <h2 id="vName"></h2>
-    <p id="vSize" class="v-size"></p>
-    <p id="vPrice" class="v-price"></p>
-    <div class="viewer-links">
-      <button id="vGroup" class="text-btn" type="button" hidden>كل أنواع هذا المنتج</button>
-      <button id="vRename" class="text-btn" type="button">تعديل الاسم</button>
-    </div>
-    <div id="vCtrl" class="ctrl"></div>
-  </div>
+  <div id="pvPages" class="page-body pv-pages"></div>
 </section>
 
 <!-- Shopping checklist: opened from the link in the shared list; tick each item once it is bought -->
-<section id="shop" class="sheet shop" role="dialog" aria-modal="true" aria-labelledby="shopTitle" hidden>
-  <div class="sheet-head">
-    <button class="icon-btn" type="button" data-close aria-label="إغلاق">
+<section id="shop" class="page shop" role="dialog" aria-modal="true" aria-labelledby="shopTitle" hidden>
+  <div class="page-head">
+    <button class="back" type="button" data-close aria-label="إغلاق">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
     </button>
-    <div class="sheet-title"><h2 id="shopTitle">قائمة التسوق</h2><p id="shopSub" class="sub"></p></div>
+    <div class="page-title"><h2 id="shopTitle">قائمة التسوق</h2><p id="shopSub" class="sub"></p></div>
     <button id="shopHide" class="text-btn" type="button">إخفاء ما تم</button>
   </div>
   <div class="shop-progress"><div class="pbar"><span id="shopBar"></span></div><b id="shopCount"></b></div>
-  <div id="shopBody" class="sheet-body"></div>
+  <div id="shopBody" class="page-body"></div>
 </section>
 
-<!-- Earlier lists (kept on this phone when a list is shared) -->
-<section id="hpanel" class="panel" role="dialog" aria-modal="true" aria-labelledby="hTitle" hidden>
-  <div class="panel-card">
-    <div class="sheet-head">
-      <button class="icon-btn" type="button" data-close aria-label="إغلاق">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
-      </button>
-      <div class="sheet-title"><h2 id="hTitle">القوائم السابقة</h2><p class="sub">أضيفي قائمة سابقة إلى السلة ثم عدّليها</p></div>
-    </div>
-    <div id="hBody" class="panel-body"></div>
-  </div>
-</section>
-
-<!-- File preview -->
-<section id="preview" class="sheet preview" role="dialog" aria-modal="true" aria-labelledby="pvTitle" hidden>
-  <div class="sheet-head">
-    <button class="icon-btn" type="button" data-close aria-label="رجوع">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 5 15.6 12l-7 7-1.4-1.4 5.6-5.6-5.6-5.6L8.6 5Z"/></svg>
+<!-- Photo of one product -->
+<section id="viewer" class="viewer" role="dialog" aria-modal="true" aria-labelledby="vName" hidden>
+  <div class="viewer-card">
+    <button class="v-close" type="button" data-close aria-label="إغلاق">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z"/></svg>
     </button>
-    <div class="sheet-title"><h2 id="pvTitle">معاينة ملف PDF</h2><p id="pvInfo" class="sub"></p></div>
+    <div class="v-img"><img id="vImg" alt=""></div>
+    <h2 id="vName"></h2>
+    <p id="vSize" class="v-size"></p>
+    <p id="vStore" class="v-store"></p>
+    <div id="vCtrl" class="ctrl v-ctrl"></div>
+    <button id="vMore" class="link" type="button" hidden></button>
   </div>
-  <div id="pvPages" class="pv-pages sheet-body"></div>
 </section>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="catalog.js?v=faf2723272"></script>
+<script src="catalog.js?v=5227eeeaa7"></script>
 <script src="pdf.js?v=4867c9d2a7"></script>
-<script src="app.js?v=205ff06784"></script>
+<script src="app.js?v=c7cf1b2ffd"></script>
 </body>
 </html>
