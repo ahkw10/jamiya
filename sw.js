@@ -6,7 +6,7 @@
  * The cache name changes with every published version (set by tools/publish.js), and older caches are removed.
  */
 'use strict';
-var CACHE = 'jamiya-5304b801e7';
+var CACHE = 'jamiya-f56f891dfe';
 
 self.addEventListener('install', function () { self.skipWaiting(); });
 self.addEventListener('activate', function (e) {

@@ -286,7 +286,9 @@
     var canvas = document.createElement('canvas'); canvas.width = PAGE_W; canvas.height = PAGE_MAX_H;
     var ctx = canvas.getContext('2d', { willReadFrequently: true }) || canvas.getContext('2d');
     var pages = [], previews = [];
-    return Promise.all(all.map(function (e) { return loadImage(e.img).then(function (im) { e.img = im; return im && im.decode ? im.decode().catch(function () { }) : null; }); }))
+    // decode() waits for the page to be drawn; a hidden page (another app in front) would wait forever, and a loaded image draws anyway
+    function settle(im) { return im && im.decode ? Promise.race([im.decode().catch(function () { }), new Promise(function (r) { setTimeout(r, 1500); })]) : null; }
+    return Promise.all(all.map(function (e) { return loadImage(e.img).then(function (im) { e.img = im; return settle(im); }); }))
       .then(function () {
         var chain = Promise.resolve();
         plan.forEach(function (pg, p) {
